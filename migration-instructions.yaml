@@ -1,0 +1,68 @@
+# ============================================================
+# Sitecore XP → SitecoreAI Migration Instructions
+#
+# This file is the single source of truth for what the
+# migration engine investigates and transforms.
+#
+# Rules:
+#  - No Sitecore IDs are hardcoded here.
+#  - IDs are discovered at runtime via MCP.
+#  - Each case defines *intent*, not hardcoded values.
+#  - The AI investigates both environments and builds a plan.
+# ============================================================
+
+version: "1.0"
+
+cases:
+  - id: renderings
+    name: Renderings
+    description: >
+      Migrate XP Controller Renderings to SitecoreAI JSON Renderings.
+      The engine discovers the source template by asking XP MCP what
+      template is used for controller renderings, then asks SitecoreAI
+      MCP for the equivalent JSON Rendering template. IDs are never
+      hardcoded — they are resolved live.
+
+    # Where to scan for items belonging to this case
+    scope:
+      sitecorePath: /sitecore/layout/Renderings
+      recursive: true
+
+    # What the engine investigates in the XP environment
+    investigate:
+      xp:
+        - find: template
+          where: templateName
+          matches: Controller Rendering
+          description: Discover the GUID of the Controller Rendering template in XP
+
+      sitecoreAI:
+        - find: template
+          where: templateName
+          matches: Json Rendering
+          searchPath: /sitecore/templates
+          description: Discover the GUID of the JSON Rendering template in SitecoreAI
+
+    # What fields may be transformed (others are always preserved)
+    transform:
+      - field: Template
+        strategy: remap-to-discovered
+        sourceInvestigationRef: xp.Controller Rendering
+        targetInvestigationRef: sitecoreAI.Json Rendering
+        description: Change Template field from Controller Rendering GUID to JSON Rendering GUID
+
+    # Fields explicitly preserved (defensive — engine always preserves unlisted fields)
+    preserve:
+      - ID
+      - Parent
+      - Path
+      - DB
+      - Languages
+
+    # How to validate the plan before execution
+    validate:
+      - check: targetTemplateExists
+        via: sitecoreAI
+        description: Confirm the JSON Rendering template ID exists in SitecoreAI before approving
+      - check: noDuplicateIds
+        description: Ensure no two affected items share the same ID

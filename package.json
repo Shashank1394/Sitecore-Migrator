@@ -1,0 +1,32 @@
+{
+  "name": "sitecore-migration-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sitecore XP to SitecoreAI Migration Workbench",
+  "type": "module",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:5173 file:dist/electron/main.js && node scripts/start-electron.cjs\"",
+    "build": "vite build && tsc && tsc -p tsconfig.electron.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit"
+  },
+  "dependencies": {
+    "electron": "^38.2.0",
+    "js-yaml": "^4.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "concurrently": "^9.2.1",
+    "wait-on": "^8.0.4"
+  }
+}

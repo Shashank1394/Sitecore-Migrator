@@ -1,0 +1,29 @@
+{
+  "source": {
+    "directory": "./source/xp"
+  },
+  "output": {
+    "directory": "./output/sitecoreai"
+  },
+  "reports": {
+    "directory": "./reports"
+  },
+  "scope": {
+    "path": "/sitecore/content/Microsites/EnterpriseComponents/Data",
+    "recursive": true
+  },
+  "mcp": {
+    "xp": {
+      "enabled": true
+    },
+    "sitecoreAI": {
+      "enabled": true
+    }
+  },
+  "validation": {
+    "preserveItemIds": true,
+    "failOnMissingMapping": true,
+    "failOnAmbiguousMapping": true,
+    "validateYaml": true
+  }
+}

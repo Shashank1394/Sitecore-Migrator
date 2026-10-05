@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["electron/main.ts", "electron/preload.cts", "electron/mcp-client-factory.ts"],
+  "exclude": ["node_modules", "dist"]
+}
