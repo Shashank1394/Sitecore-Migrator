@@ -7,6 +7,7 @@ import type {
   FolderNode,
   InventoryProgress,
   InventoryResult,
+  McpConnectionStatus,
   MigrationPlan,
   ScanResult,
 } from "./electron.d.ts";
@@ -196,7 +197,207 @@ function ScanPage({
   );
 }
 
-// ── Page 3: Inventory ─────────────────────────────────────────────────────────
+// ── Page 3: Select Migration Scope ────────────────────────────────────────────
+
+function ScopeSelectPage({
+  scanResult,
+  onBack,
+  onContinue,
+}: {
+  scanResult: ScanResult;
+  onBack: () => void;
+  onContinue: (scopeFolder: string) => void;
+}) {
+  const [selectedScope, setSelectedScope] = useState<string | null>(null);
+
+  // Extract only top-level folders from the tree (no nested traversal)
+  const topLevelFolders = scanResult.tree.filter((node) => node.type === "folder");
+
+  function countFilesInScope(node: FolderNode): number {
+    if (node.type === "file") return 1;
+    let count = 0;
+    if (node.children) {
+      for (const child of node.children) {
+        count += countFilesInScope(child);
+      }
+    }
+    return count;
+  }
+
+  function handleSelectScope(fullPath: string) {
+    console.log("🔍 ScopeSelectPage - User clicked folder card:", fullPath);
+    setSelectedScope(fullPath);
+  }
+
+  function handleConfirm() {
+    if (selectedScope) {
+      console.log("🔍 ScopeSelectPage - User confirmed scope:", selectedScope);
+      onContinue(selectedScope);
+    }
+  }
+
+  return (
+    <section className="content">
+      <div className="card scope-card">
+        <div className="card-header">
+          <span className="step">03</span>
+          <div>
+            <h2>Select Migration Scope</h2>
+            <p>Choose which folder to analyze and migrate. All YAML files under the selected folder will be included.</p>
+          </div>
+        </div>
+
+        <div className="scope-grid-container">
+          <div className="scope-grid">
+            {topLevelFolders.length === 0 ? (
+              <p className="scope-empty">No folders found. The source must contain at least one folder with YAML files.</p>
+            ) : (
+              topLevelFolders.map((folder) => {
+                const fileCount = countFilesInScope(folder);
+                const isSelected = selectedScope === folder.fullPath;
+                return (
+                  <div
+                    key={folder.fullPath}
+                    className={`scope-folder-card ${isSelected ? "scope-folder-card--selected" : ""}`}
+                    onClick={() => handleSelectScope(folder.fullPath)}
+                  >
+                    <div className="scope-folder-icon">📁</div>
+                    <div className="scope-folder-name">{folder.name}</div>
+                    <div className="scope-folder-count">
+                      {fileCount} file{fileCount !== 1 ? "s" : ""}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {selectedScope && (
+          <div className="scope-summary">
+            <p className="scope-selected-label">Selected scope:</p>
+            <p className="scope-selected-path">{selectedScope}</p>
+          </div>
+        )}
+
+        <div className="actions actions-spaced">
+          <button type="button" className="secondary-button" onClick={onBack}>← Back</button>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={!selectedScope}
+            onClick={handleConfirm}
+          >
+            Continue <span>→</span>
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Page 4: MCP Connection Status ─────────────────────────────────────────────
+
+function McpStatusPage({
+  mcpStatus,
+  loading,
+  onBack,
+  onContinue,
+}: {
+  mcpStatus: McpConnectionStatus | null;
+  loading: boolean;
+  onBack: () => void;
+  onContinue: () => void;
+}) {
+  const canProceed =
+    mcpStatus && mcpStatus.xpConnected && mcpStatus.sitecoreAiConnected;
+
+  return (
+    <section className="content">
+      <div className="card mcp-card">
+        <div className="card-header">
+          <span className="step">04</span>
+          <div>
+            <h2>MCP Connection Status</h2>
+            <p>Verifying connection to Sitecore XP GraphQL and SitecoreAI MCP services.</p>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="mcp-loading">
+            <span className="scan-spinner" /> Checking MCP connections…
+          </div>
+        )}
+
+        {mcpStatus && !loading && (
+          <>
+            <div className="mcp-status-grid">
+              <div className={`mcp-status-item ${mcpStatus.xpConnected ? "mcp-status-connected" : "mcp-status-disconnected"}`}>
+                <div className="mcp-status-icon">
+                  {mcpStatus.xpConnected ? "✓" : "✕"}
+                </div>
+                <div className="mcp-status-info">
+                  <div className="mcp-status-title">Sitecore XP GraphQL</div>
+                  <div className="mcp-status-desc">
+                    {mcpStatus.xpConnected ? "Connected" : "Not configured or unreachable"}
+                  </div>
+                </div>
+              </div>
+
+              <div className={`mcp-status-item ${mcpStatus.sitecoreAiConnected ? "mcp-status-connected" : "mcp-status-disconnected"}`}>
+                <div className="mcp-status-icon">
+                  {mcpStatus.sitecoreAiConnected ? "✓" : "✕"}
+                </div>
+                <div className="mcp-status-info">
+                  <div className="mcp-status-title">SitecoreAI MCP</div>
+                  <div className="mcp-status-desc">
+                    {mcpStatus.sitecoreAiConnected ? "Connected" : "Not configured or unreachable"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {mcpStatus.errors.length > 0 && (
+              <div className="mcp-errors">
+                <div className="mcp-errors-title">⚠ Configuration errors:</div>
+                <div className="mcp-error-list">
+                  {mcpStatus.errors.map((err, i) => (
+                    <div key={i} className="mcp-error-item">{err}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {mcpStatus.warnings.length > 0 && (
+              <div className="mcp-warnings">
+                <div className="mcp-warnings-title">ℹ Warnings:</div>
+                <div className="mcp-warning-list">
+                  {mcpStatus.warnings.map((warn, i) => (
+                    <div key={i} className="mcp-warning-item">{warn}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="actions actions-spaced">
+          <button type="button" className="secondary-button" onClick={onBack}>← Back</button>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={!canProceed || loading}
+            onClick={onContinue}
+          >
+            Analyze & Plan <span>→</span>
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Page 5: Inventory ─────────────────────────────────────────────────────────
 
 function InventoryPage({
   sourceFolder, progress, inventoryResult, inventoryError, onBack, onContinue,
@@ -211,15 +412,18 @@ function InventoryPage({
 }) {
   const running = progress !== null && progress.status !== "done" && progress.status !== "error";
   const pct = progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+  
+  // Show the actual folder being scanned (from result if available, else from progress)
+  const displayFolder = inventoryResult?.sourceDirectory || sourceFolder;
 
   return (
     <section className="content">
       <div className="card inventory-card">
         <div className="card-header">
-          <span className="step">03</span>
+          <span className="step">05</span>
           <div>
             <h2>Source Inventory</h2>
-            <p>Building inventory from <strong className="folder-pill">{sourceFolder}</strong></p>
+            <p>Building inventory from <strong className="folder-pill">{displayFolder}</strong></p>
           </div>
         </div>
 
@@ -274,7 +478,7 @@ function InventoryPage({
           <button type="button" className="secondary-button" onClick={onBack}>← Back</button>
           {inventoryResult && inventoryResult.validFiles > 0 && (
             <button type="button" className="primary-button" onClick={onContinue}>
-              Analyze & Plan <span>→</span>
+              Continue <span>→</span>
             </button>
           )}
         </div>
@@ -283,7 +487,7 @@ function InventoryPage({
   );
 }
 
-// ── Page 4: Analyze & Plan ────────────────────────────────────────────────────
+// ── Case Status Badge ─────────────────────────────────────────────────────────
 
 function CaseStatusBadge({ status }: { status: CaseAnalysis["status"] }) {
   const map: Record<CaseAnalysis["status"], { label: string; cls: string }> = {
@@ -330,7 +534,7 @@ function AnalysisPage({
     <section className="content">
       <div className="card analysis-card">
         <div className="card-header">
-          <span className="step">04</span>
+          <span className="step">06</span>
           <div>
             <h2>Analyze & Plan</h2>
             <p>AI investigation across <strong className="folder-pill">{sourceFolder}</strong></p>
@@ -481,7 +685,7 @@ function ReviewPage({
     <section className="content">
       <div className="card review-card">
         <div className="card-header">
-          <span className="step">05</span>
+          <span className="step">07</span>
           <div>
             <h2>Review & Approve</h2>
             <p>Inspect every planned change before migration executes.</p>
@@ -575,14 +779,16 @@ function ReviewPage({
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-type Page = "folders" | "scan" | "inventory" | "analysis" | "review";
+type Page = "folders" | "scan" | "scope-select" | "mcp-status" | "inventory" | "analysis" | "review";
 
 const STEPS: { key: Page; label: string }[] = [
-  { key: "folders",   label: "01 Folders" },
-  { key: "scan",      label: "02 Source Files" },
-  { key: "inventory", label: "03 Inventory" },
-  { key: "analysis",  label: "04 Analyze & Plan" },
-  { key: "review",    label: "05 Review & Approve" },
+  { key: "folders",       label: "01 Folders" },
+  { key: "scan",          label: "02 Source Files" },
+  { key: "scope-select",  label: "03 Migration Scope" },
+  { key: "mcp-status",    label: "04 MCP Status" },
+  { key: "inventory",     label: "05 Inventory" },
+  { key: "analysis",      label: "06 Analyze & Plan" },
+  { key: "review",        label: "07 Review & Approve" },
 ];
 
 export default function App() {
@@ -598,13 +804,20 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState("");
 
-  // Step 3 — inventory
+  // Step 3 — scope selection
+  const [selectedScope, setSelectedScope] = useState<string | null>(null);
+
+  // Step 4 — MCP status
+  const [mcpStatus, setMcpStatus] = useState<McpConnectionStatus | null>(null);
+  const [mcpStatusLoading, setMcpStatusLoading] = useState(false);
+
+  // Step 5 — inventory
   const [inventoryProgress, setInventoryProgress] = useState<InventoryProgress | null>(null);
   const [inventoryResult, setInventoryResult] = useState<InventoryResult | null>(null);
   const [inventoryError, setInventoryError] = useState("");
   const invUnsubRef = useRef<(() => void) | null>(null);
 
-  // Step 4 — analysis
+  // Step 6 — analysis
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [migrationPlan, setMigrationPlan] = useState<MigrationPlan | null>(null);
   const [analysisError, setAnalysisError] = useState("");
@@ -646,13 +859,41 @@ export default function App() {
   }
 
   async function handleScanContinue() {
+    setSelectedScope(null);
+    setPage("scope-select");
+  }
+
+  async function handleScopeContinue(scopeFolder: string) {
+    console.log("🔍 Scope Continue - Setting selectedScope to:", scopeFolder);
+    setSelectedScope(scopeFolder);
+    setMcpStatus(null);
+    setMcpStatusLoading(true);
+    setPage("mcp-status");
+    try {
+      const status = await window.electronAPI.checkMcpStatus();
+      setMcpStatus(status);
+    } catch (err) {
+      setMcpStatus({
+        xpConnected: false,
+        sitecoreAiConnected: false,
+        warnings: [],
+        errors: [err instanceof Error ? err.message : "Failed to check MCP status"],
+      });
+    } finally {
+      setMcpStatusLoading(false);
+    }
+  }
+
+  async function handleMcpStatusContinue() {
+    console.log("🔍 MCP Status Continue - selectedScope:", selectedScope);
     setInventoryProgress(null); setInventoryResult(null); setInventoryError("");
     invUnsubRef.current?.();
     const unsub = window.electronAPI.onInventoryProgress(setInventoryProgress);
     invUnsubRef.current = unsub;
     setPage("inventory");
     try {
-      const { inventory } = await window.electronAPI.runInventory(sourceFolder, destinationFolder);
+      console.log("🔍 Calling runInventory with scope:", selectedScope || "undefined (using source)");
+      const { inventory } = await window.electronAPI.runInventory(sourceFolder, destinationFolder, selectedScope || undefined);
       setInventoryResult(inventory);
     } catch (err) {
       setInventoryError(err instanceof Error ? err.message : "Inventory failed.");
@@ -668,7 +909,8 @@ export default function App() {
     anlUnsubRef.current = unsub;
     setPage("analysis");
     try {
-      const { plan, mcpWarnings: warnings } = await window.electronAPI.runAnalysis(sourceFolder);
+      const scopeToAnalyze = selectedScope || sourceFolder;
+      const { plan, mcpWarnings: warnings } = await window.electronAPI.runAnalysis(scopeToAnalyze);
       setMigrationPlan(plan);
       setMcpWarnings(warnings);
     } catch (err) {
@@ -708,11 +950,13 @@ export default function App() {
         </nav>
       </header>
 
-      {page === "folders"   && <FolderPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} pickerError={pickerError} onSelectSource={() => selectFolder(setSourceFolder)} onSelectDestination={() => selectFolder(setDestinationFolder)} onContinue={handleFoldersContinue} />}
-      {page === "scan"      && <ScanPage sourceFolder={sourceFolder} scanning={scanning} scanResult={scanResult} scanError={scanError} onBack={() => setPage("folders")} onContinue={handleScanContinue} />}
-      {page === "inventory" && <InventoryPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} progress={inventoryProgress} inventoryResult={inventoryResult} inventoryError={inventoryError} onBack={() => setPage("scan")} onContinue={handleInventoryContinue} />}
-      {page === "analysis"  && <AnalysisPage sourceFolder={sourceFolder} progress={analysisProgress} plan={migrationPlan} analysisError={analysisError} mcpWarnings={mcpWarnings} onBack={() => setPage("inventory")} onContinue={handleAnalysisContinue} />}
-      {page === "review"    && migrationPlan && <ReviewPage sourceFolder={sourceFolder} plan={migrationPlan} onBack={() => setPage("analysis")} onApprove={handleApprove} />}
+      {page === "folders"       && <FolderPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} pickerError={pickerError} onSelectSource={() => selectFolder(setSourceFolder)} onSelectDestination={() => selectFolder(setDestinationFolder)} onContinue={handleFoldersContinue} />}
+      {page === "scan"          && <ScanPage sourceFolder={sourceFolder} scanning={scanning} scanResult={scanResult} scanError={scanError} onBack={() => setPage("folders")} onContinue={handleScanContinue} />}
+      {page === "scope-select"  && scanResult && <ScopeSelectPage scanResult={scanResult} onBack={() => setPage("scan")} onContinue={handleScopeContinue} />}
+      {page === "mcp-status"    && <McpStatusPage mcpStatus={mcpStatus} loading={mcpStatusLoading} onBack={() => setPage("scope-select")} onContinue={handleMcpStatusContinue} />}
+      {page === "inventory"     && <InventoryPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} progress={inventoryProgress} inventoryResult={inventoryResult} inventoryError={inventoryError} onBack={() => setPage("mcp-status")} onContinue={handleInventoryContinue} />}
+      {page === "analysis"      && <AnalysisPage sourceFolder={sourceFolder} progress={analysisProgress} plan={migrationPlan} analysisError={analysisError} mcpWarnings={mcpWarnings} onBack={() => setPage("inventory")} onContinue={handleAnalysisContinue} />}
+      {page === "review"        && migrationPlan && <ReviewPage sourceFolder={sourceFolder} plan={migrationPlan} onBack={() => setPage("analysis")} onApprove={handleApprove} />}
     </main>
   );
 }

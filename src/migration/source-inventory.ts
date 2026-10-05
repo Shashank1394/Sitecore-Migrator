@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, appendFile } from "node:fs/promises";
 import { scanYamlFiles } from "../yaml/yaml-scanner.js";
 import { readYamlFile } from "../yaml/yaml-reader.js";
 
@@ -59,6 +59,13 @@ export async function runSourceInventory(
   onProgress: ProgressCallback,
 ): Promise<InventoryResult> {
   const startedAt = Date.now();
+  
+  // Log to console and a debug file
+  const debugMsg = `\n[${new Date().toISOString()}] runSourceInventory called with: ${sourceDirectory}`;
+  console.log("🔍 SOURCE-INVENTORY:", debugMsg);
+  try {
+    await appendFile("/tmp/sitecore-migrator-debug.log", debugMsg);
+  } catch {}
 
   // Phase 1: scan for file paths
   onProgress({

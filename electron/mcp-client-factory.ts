@@ -191,11 +191,18 @@ export interface McpClientStatus {
 export function buildMcpClients(): { clients: McpClients; status: McpClientStatus } {
   const warnings: string[] = [];
 
+  console.log("🔍 Building MCP clients...");
+  console.log("  SITECORE_XP_GRAPHQL_ENDPOINT:", process.env["SITECORE_XP_GRAPHQL_ENDPOINT"]);
+  console.log("  SITECORE_XP_GRAPHQL_API_KEY:", process.env["SITECORE_XP_GRAPHQL_API_KEY"]);
+
   // XP client
   let xpClient: SitecoreMcpClient;
   const xpEndpoint = process.env["SITECORE_XP_GRAPHQL_ENDPOINT"];
   const xpApiKey = process.env["SITECORE_XP_GRAPHQL_API_KEY"];
   const xpDatabase = process.env["SITECORE_SOURCE_DATABASE"] ?? "master";
+
+  console.log("  XP Endpoint present:", !!xpEndpoint);
+  console.log("  XP API Key present:", !!xpApiKey);
 
   if (xpEndpoint && xpApiKey) {
     xpClient = new XpGraphqlMcpClient(xpEndpoint, xpApiKey, xpDatabase);
@@ -209,6 +216,9 @@ export function buildMcpClients(): { clients: McpClients; status: McpClientStatu
   const aiEndpoint = process.env["SITECORE_AI_ENDPOINT"];
   const aiApiKey = process.env["SITECORE_AI_API_KEY"];
 
+  console.log("  AI Endpoint present:", !!aiEndpoint);
+  console.log("  AI API Key present:", !!aiApiKey);
+
   if (aiEndpoint && aiApiKey) {
     const transport = new SitecoreAiHttpTransport(aiEndpoint, aiApiKey);
     sitecoreAiClient = new SitecoreAiMcpClient(transport);
@@ -216,6 +226,9 @@ export function buildMcpClients(): { clients: McpClients; status: McpClientStatu
     warnings.push("SitecoreAI endpoint or API key not configured — SitecoreAI MCP unavailable.");
     sitecoreAiClient = new NullMcpClient();
   }
+
+  console.log("  XP Client created:", xpClient instanceof XpGraphqlMcpClient);
+  console.log("  SitecoreAI Client created:", sitecoreAiClient instanceof SitecoreAiMcpClient);
 
   return {
     clients: { xp: xpClient, sitecoreAI: sitecoreAiClient },

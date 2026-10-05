@@ -5,6 +5,7 @@ export async function scanYamlFiles(
   directory: string,
   recursive = true,
 ): Promise<string[]> {
+  console.log("🔍 scanYamlFiles called with directory:", directory);
   const yamlFiles: string[] = [];
 
   async function scan(currentDirectory: string): Promise<void> {
@@ -30,6 +31,8 @@ export async function scanYamlFiles(
   }
 
   await scan(directory);
+  
+  console.log("🔍 scanYamlFiles found", yamlFiles.length, "YAML files in", directory);
 
   return yamlFiles;
 }

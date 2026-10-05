@@ -122,6 +122,13 @@ interface RunAnalysisResult {
   mcpWarnings: string[];
 }
 
+interface McpConnectionStatus {
+  xpConnected: boolean;
+  sitecoreAiConnected: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
 // ── Exposed API ───────────────────────────────────────────────────────────────
 
 contextBridge.exposeInMainWorld("electronAPI", {
@@ -133,12 +140,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   scanSourceFolder: (folderPath: string): Promise<ScanResult> =>
     ipcRenderer.invoke("scan-source-folder", folderPath),
 
-  // Source inventory (Step 3 → renamed to Step 2 in the flow, Step 3 is now analysis)
+  // Source inventory (Step 5)
   runInventory: (
     sourceFolder: string,
     destinationFolder: string,
+    scopeFolder?: string,
   ): Promise<RunInventoryResult> =>
-    ipcRenderer.invoke("run-inventory", sourceFolder, destinationFolder),
+    ipcRenderer.invoke("run-inventory", sourceFolder, destinationFolder, scopeFolder),
 
   onInventoryProgress: (
     callback: (progress: InventoryProgress) => void,
@@ -150,9 +158,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("inventory-progress", listener);
   },
 
-  // Analysis & plan (Step 3)
-  runAnalysis: (sourceFolder: string): Promise<RunAnalysisResult> =>
-    ipcRenderer.invoke("run-analysis", sourceFolder),
+  // Check MCP connection status (Step 3 → MCP Status Check)
+  checkMcpStatus: (): Promise<McpConnectionStatus> =>
+    ipcRenderer.invoke("check-mcp-status"),
+
+  // Analysis & plan (Step 4)
+  runAnalysis: (scopeFolder: string): Promise<RunAnalysisResult> =>
+    ipcRenderer.invoke("run-analysis", scopeFolder),
 
   onAnalysisProgress: (
     callback: (progress: AnalysisProgress) => void,

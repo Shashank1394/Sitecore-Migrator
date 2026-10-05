@@ -1,5 +1,14 @@
 export {};
 
+// ── MCP connection types ─────────────────────────────────────────────────────
+
+export interface McpConnectionStatus {
+  xpConnected: boolean;
+  sitecoreAiConnected: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
 // ── Folder scan types ─────────────────────────────────────────────────────────
 
 export interface FolderNode {
@@ -149,11 +158,13 @@ declare global {
       runInventory: (
         sourceFolder: string,
         destinationFolder: string,
+        scopeFolder?: string,
       ) => Promise<RunInventoryResult>;
       onInventoryProgress: (
         callback: (progress: InventoryProgress) => void,
       ) => () => void;
-      runAnalysis: (sourceFolder: string) => Promise<RunAnalysisResult>;
+      checkMcpStatus: () => Promise<McpConnectionStatus>;
+      runAnalysis: (scopeFolder: string) => Promise<RunAnalysisResult>;
       onAnalysisProgress: (
         callback: (progress: AnalysisProgress) => void,
       ) => () => void;

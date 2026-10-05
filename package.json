@@ -5,12 +5,17 @@
   "description": "Sitecore XP to SitecoreAI Migration Workbench",
   "type": "module",
   "main": "dist/electron/main.js",
+  "engines": {
+    "npm": ">=10.0.0",
+    "node": ">=20.0.0"
+  },
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:5173 file:dist/electron/main.js && node scripts/start-electron.cjs\"",
-    "build": "vite build && tsc && tsc -p tsconfig.electron.json",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit"
+    "dev": "concurrently -k \"vite\" \"node node_modules/typescript/bin/tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:5173 file:dist/electron/main.js && node scripts/start-electron.cjs\"",
+    "build": "vite build && node node_modules/typescript/bin/tsc && node node_modules/typescript/bin/tsc -p tsconfig.electron.json",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.electron.json --noEmit"
   },
   "dependencies": {
+    "dotenv": "^18.0.5",
     "electron": "^38.2.0",
     "js-yaml": "^4.1.0",
     "react": "^19.1.1",
@@ -23,10 +28,10 @@
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
-    "tsx": "^4.20.3",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.7",
     "concurrently": "^9.2.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7",
     "wait-on": "^8.0.4"
   }
 }
