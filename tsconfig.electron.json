@@ -4,6 +4,12 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["electron/main.ts", "electron/preload.cts", "electron/mcp-client-factory.ts"],
+  "include": [
+    "electron/main.ts",
+    "electron/preload.cts",
+    "electron/mcp-client-factory.ts",
+    "electron/mcp/browser-oauth-provider.ts",
+    "electron/mcp/mcp-connection-factory.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

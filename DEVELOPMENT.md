@@ -2,13 +2,13 @@
 
 ## Package Manager: npm
 
-This project **uses `npm` exclusively**. Do **NOT** use `pnpm` or `yarn`.
+This project **uses `npm` exclusively**.
 
 ### Why npm only?
 
 - Simpler dependency resolution for Electron + TypeScript projects
 - Clearer build pipeline for both renderer and main process
-- Avoids pnpm workspace complications that can break builds
+- One lockfile (`package-lock.json`) for reproducible builds
 
 ---
 
@@ -115,15 +115,13 @@ The `.env` file is loaded by `electron/main.ts` via `dotenv` when the app starts
 
 ## Troubleshooting
 
-### "Module not found" errors after running pnpm
+### "Module not found" errors after a bad install
 
-If you accidentally ran `pnpm install` or `pnpm dev`:
+If dependencies get into a broken state, do a clean reinstall:
 
 ```bash
-# Clean up pnpm artifacts
+# Clean up and reinstall
 rm -rf node_modules package-lock.json
-
-# Reinstall with npm
 npm install
 
 # Rebuild

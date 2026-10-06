@@ -15,8 +15,14 @@ import {
   type InventoryProgress,
   type InventoryResult,
 } from "../src/migration/source-inventory.js";
-import { runAnalysis, type AnalysisProgressCallback } from "../src/migration/plan-runner.js";
-import type { MigrationPlan, AnalysisProgress } from "../src/migration/analysis-types.js";
+import {
+  runAnalysis,
+  type AnalysisProgressCallback,
+} from "../src/migration/plan-runner.js";
+import type {
+  MigrationPlan,
+  AnalysisProgress,
+} from "../src/migration/analysis-types.js";
 import { MarketerMcpClient } from "./marketer-mcp-client.js";
 import type { McpClients } from "../src/migration/case-analyser.js";
 
@@ -28,17 +34,6 @@ const __dirname = path.dirname(__filename);
 // We need to go up 2 levels to reach the project root where .env lives
 const envPath = path.join(__dirname, "..", "..", ".env");
 const dotenvResult = dotenv.config({ path: envPath });
-
-// Debug: Log what was loaded
-console.log("🔍 DotENV loaded from:", envPath);
-console.log("🔍 DotENV result:", {
-  parsed: dotenvResult.parsed ? Object.keys(dotenvResult.parsed) : null,
-  error: dotenvResult.error?.message,
-});
-console.log("🔍 SITECORE_XP_GRAPHQL_ENDPOINT:", process.env.SITECORE_XP_GRAPHQL_ENDPOINT);
-console.log("🔍 SITECORE_XP_GRAPHQL_API_KEY:", process.env.SITECORE_XP_GRAPHQL_API_KEY);
-console.log("🔍 SITECORE_AI_ENDPOINT:", process.env.SITECORE_AI_ENDPOINT);
-console.log("🔍 SITECORE_AI_API_KEY:", process.env.SITECORE_AI_API_KEY);
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -142,18 +137,21 @@ function countFiles(nodes: FolderNode[]): number {
   return count;
 }
 
-ipcMain.handle("scan-source-folder", async (_event, folderPath: string): Promise<ScanResult> => {
-  try {
-    await stat(folderPath);
-  } catch {
-    throw new Error(`Folder not found: ${folderPath}`);
-  }
+ipcMain.handle(
+  "scan-source-folder",
+  async (_event, folderPath: string): Promise<ScanResult> => {
+    try {
+      await stat(folderPath);
+    } catch {
+      throw new Error(`Folder not found: ${folderPath}`);
+    }
 
-  const tree = await buildTree(folderPath);
-  const totalFiles = countFiles(tree);
+    const tree = await buildTree(folderPath);
+    const totalFiles = countFiles(tree);
 
-  return { totalFiles, tree };
-});
+    return { totalFiles, tree };
+  },
+);
 
 // ── Migration job store (in-memory, one job at a time) ────────────────────────
 
@@ -166,10 +164,15 @@ export interface RunInventoryResult {
 
 ipcMain.handle(
   "run-inventory",
-  async (event, sourceFolder: string, destinationFolder: string, scopeFolder?: string): Promise<RunInventoryResult> => {
+  async (
+    event,
+    sourceFolder: string,
+    destinationFolder: string,
+    scopeFolder?: string,
+  ): Promise<RunInventoryResult> => {
     // If scopeFolder is provided, use it; otherwise use sourceFolder (for backwards compatibility)
     const folderToInventory = scopeFolder || sourceFolder;
-    
+
     console.log("🔍 ===== INVENTORY HANDLER CALLED =====");
     console.log("  Source folder:", sourceFolder);
     console.log("  Destination folder:", destinationFolder);
@@ -179,17 +182,31 @@ ipcMain.handle(
     console.log("  Scope is empty string?", scopeFolder === "");
     console.log("  Scope type:", typeof scopeFolder);
     console.log("  Using folder:", folderToInventory);
-    console.log("  Folders are different?", folderToInventory !== sourceFolder ? "YES - SCOPE APPLIED!" : "NO - USING FULL SOURCE");
-    
+    console.log(
+      "  Folders are different?",
+      folderToInventory !== sourceFolder
+        ? "YES - SCOPE APPLIED!"
+        : "NO - USING FULL SOURCE",
+    );
+
     // Verify the folder exists
     try {
       const stats = await stat(folderToInventory);
-      console.log("  Folder exists:", stats.isDirectory() ? "YES (directory)" : "YES (but not a directory!)");
+      console.log(
+        "  Folder exists:",
+        stats.isDirectory() ? "YES (directory)" : "YES (but not a directory!)",
+      );
     } catch (err) {
-      console.log("  Folder exists: NO -", err instanceof Error ? err.message : String(err));
+      console.log(
+        "  Folder exists: NO -",
+        err instanceof Error ? err.message : String(err),
+      );
     }
-    
-    const job = new MigrationJob({ source: sourceFolder, destination: destinationFolder });
+
+    const job = new MigrationJob({
+      source: sourceFolder,
+      destination: destinationFolder,
+    });
     activeJob = job;
 
     const sender = event.sender;
@@ -203,7 +220,10 @@ ipcMain.handle(
     };
 
     try {
-      const inventory = await runSourceInventory(folderToInventory, sendProgress);
+      const inventory = await runSourceInventory(
+        folderToInventory,
+        sendProgress,
+      );
       job.completeInventory(inventory);
       return { jobId: job.id, inventory };
     } catch (err) {
@@ -238,7 +258,9 @@ ipcMain.handle("check-mcp-status", async (): Promise<McpConnectionStatus> => {
     console.log("  ✓ template-mappings.json found");
     warnings.push("Using manual template mappings from template-mappings.json");
   } catch (err) {
-    errors.push("template-mappings.json not found in project root. Create it with source→target template GUIDs.");
+    errors.push(
+      "template-mappings.json not found in project root. Create it with source→target template GUIDs.",
+    );
     console.log("  ✕ template-mappings.json not found");
   }
 
@@ -262,48 +284,61 @@ export interface AuthenticationResult {
 let sitecoreAIServerUrl: string | null = null;
 let sitecoreAIClient: MarketerMcpClient | null = null;
 
-ipcMain.handle("authenticate-sitecoreai", async (): Promise<AuthenticationResult> => {
-  try {
-    // Read MCP configuration to get the server URL
-    const fs = await import("node:fs/promises");
-    const mcpConfigPath = path.join(process.cwd(), "mcp.json");
-    
-    let serverUrl = "https://marketer.sitecorecloud.io/mcp/marketer-mcp-prod";
-    
+ipcMain.handle(
+  "authenticate-sitecoreai",
+  async (): Promise<AuthenticationResult> => {
     try {
-      const mcpContent = await fs.readFile(mcpConfigPath, "utf-8");
-      const mcpConfig = JSON.parse(mcpContent);
-      if (mcpConfig.servers?.["SitecoreAI Marketer"]?.url) {
-        serverUrl = mcpConfig.servers["SitecoreAI Marketer"].url;
+      // Read MCP configuration to get the server URL
+      const fs = await import("node:fs/promises");
+      const mcpConfigPath = path.join(process.cwd(), "mcp.json");
+
+      let serverUrl = "https://marketer.sitecorecloud.io/mcp/marketer-mcp-prod";
+
+      try {
+        const mcpContent = await fs.readFile(mcpConfigPath, "utf-8");
+        const mcpConfig = JSON.parse(mcpContent);
+        if (mcpConfig.servers?.["SitecoreAI Marketer"]?.url) {
+          serverUrl = mcpConfig.servers["SitecoreAI Marketer"].url;
+        }
+      } catch (err) {
+        console.warn("⚠ Could not read mcp.json, using default URL:", err);
       }
+
+      console.log(
+        "🔐 Starting browser-based OAuth authentication for:",
+        serverUrl,
+      );
+      console.log(
+        "ℹ Marketer MCP will automatically handle authentication through browser",
+      );
+
+      const client = new MarketerMcpClient(serverUrl);
+      await client.connect();
+
+      // Preserve the in-memory OAuth token store for the analysis request.
+      sitecoreAIClient = client;
+      sitecoreAIServerUrl = serverUrl;
+
+      console.log(
+        "✓ SitecoreAI MCP configured for automatic browser authentication",
+      );
+
+      return {
+        success: true,
+        serverUrl,
+      };
     } catch (err) {
-      console.warn("⚠ Could not read mcp.json, using default URL:", err);
+      console.error("❌ Authentication configuration error:", err);
+      return {
+        success: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Authentication configuration failed",
+      };
     }
-
-    console.log("🔐 Starting browser-based OAuth authentication for:", serverUrl);
-    console.log("ℹ Marketer MCP will automatically handle authentication through browser");
-    
-    const client = new MarketerMcpClient(serverUrl);
-    await client.connect();
-
-    // Preserve the in-memory OAuth token store for the analysis request.
-    sitecoreAIClient = client;
-    sitecoreAIServerUrl = serverUrl;
-    
-    console.log("✓ SitecoreAI MCP configured for automatic browser authentication");
-    
-    return {
-      success: true,
-      serverUrl,
-    };
-  } catch (err) {
-    console.error("❌ Authentication configuration error:", err);
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Authentication configuration failed",
-    };
-  }
-});
+  },
+);
 
 export function getSitecoreAIServerUrl(): string | null {
   return sitecoreAIServerUrl;
@@ -313,10 +348,14 @@ export function getSitecoreAIServerUrl(): string | null {
 
 async function buildSitecoreAIMcpClient(): Promise<McpClients> {
   if (!sitecoreAIClient || !getSitecoreAIServerUrl()) {
-    throw new Error("SitecoreAI authentication required. Please authenticate first.");
+    throw new Error(
+      "SitecoreAI authentication required. Please authenticate first.",
+    );
   }
 
-  console.log("🔌 Building SitecoreAI MCP client for automatic browser authentication");
+  console.log(
+    "🔌 Building SitecoreAI MCP client for automatic browser authentication",
+  );
   console.log("🔗 Server URL:", getSitecoreAIServerUrl());
 
   return {
@@ -349,7 +388,8 @@ ipcMain.handle(
     } catch (err) {
       sendProgress({
         status: "error",
-        message: err instanceof Error ? err.message : "Failed to build MCP client",
+        message:
+          err instanceof Error ? err.message : "Failed to build MCP client",
         completedCases: 0,
         totalCases: 0,
       });
@@ -362,7 +402,7 @@ ipcMain.handle(
       completedCases: 0,
       totalCases: 0,
     });
-    
+
     const plan = await runAnalysis(scopeFolder, clients, sendProgress);
     return { plan, mcpWarnings: [] };
   },
