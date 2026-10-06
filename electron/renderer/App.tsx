@@ -296,189 +296,97 @@ function ScopeSelectPage({
   );
 }
 
-// ── Page 4: MCP Connection Status ─────────────────────────────────────────────
+// ── Page 4: SitecoreAI Authentication ─────────────────────────────────────────
 
-function McpStatusPage({
-  mcpStatus,
-  loading,
+interface SitecoreAIAuthState {
+  authenticated: boolean;
+  authenticating: boolean;
+  error: string;
+  serverUrl?: string;
+}
+
+function SitecoreAIAuthPage({
+  authState,
+  onAuthenticate,
   onBack,
   onContinue,
 }: {
-  mcpStatus: McpConnectionStatus | null;
-  loading: boolean;
+  authState: SitecoreAIAuthState;
+  onAuthenticate: () => void;
   onBack: () => void;
   onContinue: () => void;
 }) {
-  const canProceed =
-    mcpStatus && mcpStatus.xpConnected && mcpStatus.sitecoreAiConnected;
-
   return (
     <section className="content">
-      <div className="card mcp-card">
+      <div className="card sitecoreai-auth-card">
         <div className="card-header">
           <span className="step">04</span>
           <div>
-            <h2>MCP Connection Status</h2>
-            <p>Verifying connection to Sitecore XP GraphQL and SitecoreAI MCP services.</p>
+            <h2>SitecoreAI Authentication</h2>
+            <p>Connect to SitecoreAI MCP server to enable AI-powered template discovery</p>
           </div>
         </div>
 
-        {loading && (
-          <div className="mcp-loading">
-            <span className="scan-spinner" /> Checking MCP connections…
-          </div>
-        )}
-
-        {mcpStatus && !loading && (
-          <>
-            <div className="mcp-status-grid">
-              <div className={`mcp-status-item ${mcpStatus.xpConnected ? "mcp-status-connected" : "mcp-status-disconnected"}`}>
-                <div className="mcp-status-icon">
-                  {mcpStatus.xpConnected ? "✓" : "✕"}
-                </div>
-                <div className="mcp-status-info">
-                  <div className="mcp-status-title">Sitecore XP GraphQL</div>
-                  <div className="mcp-status-desc">
-                    {mcpStatus.xpConnected ? "Connected" : "Not configured or unreachable"}
-                  </div>
-                </div>
-              </div>
-
-              <div className={`mcp-status-item ${mcpStatus.sitecoreAiConnected ? "mcp-status-connected" : "mcp-status-disconnected"}`}>
-                <div className="mcp-status-icon">
-                  {mcpStatus.sitecoreAiConnected ? "✓" : "✕"}
-                </div>
-                <div className="mcp-status-info">
-                  <div className="mcp-status-title">SitecoreAI MCP</div>
-                  <div className="mcp-status-desc">
-                    {mcpStatus.sitecoreAiConnected ? "Connected" : "Not configured or unreachable"}
-                  </div>
-                </div>
-              </div>
+        <div className="auth-container">
+          {!authState.authenticated && !authState.authenticating && (
+            <div className="auth-prompt">
+              <div className="auth-icon">🔐</div>
+              <h3>SitecoreAI Authentication</h3>
+              <p className="auth-description">
+                When you connect, a browser window will open automatically for you to sign in to your SitecoreAI account.
+                The authentication is handled securely by the Marketer MCP server.
+              </p>
+              <button
+                type="button"
+                className="primary-button auth-button"
+                onClick={onAuthenticate}
+              >
+                Connect to SitecoreAI
+              </button>
             </div>
+          )}
 
-            {mcpStatus.errors.length > 0 && (
-              <div className="mcp-errors">
-                <div className="mcp-errors-title">⚠ Configuration errors:</div>
-                <div className="mcp-error-list">
-                  {mcpStatus.errors.map((err, i) => (
-                    <div key={i} className="mcp-error-item">{err}</div>
-                  ))}
-                </div>
-              </div>
-            )}
+          {authState.authenticating && (
+            <div className="auth-loading">
+              <span className="scan-spinner" />
+              <p>Preparing SitecoreAI MCP connection...</p>
+              <p className="auth-hint">A browser window will open for authentication if needed</p>
+            </div>
+          )}
 
-            {mcpStatus.warnings.length > 0 && (
-              <div className="mcp-warnings">
-                <div className="mcp-warnings-title">ℹ Warnings:</div>
-                <div className="mcp-warning-list">
-                  {mcpStatus.warnings.map((warn, i) => (
-                    <div key={i} className="mcp-warning-item">{warn}</div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
+          {authState.authenticated && (
+            <div className="auth-success">
+              <div className="auth-success-icon">✓</div>
+              <h3>Successfully Authenticated</h3>
+              {authState.serverUrl && (
+                <p className="auth-server">Connected to: <strong>{authState.serverUrl}</strong></p>
+              )}
+              <p className="auth-ready">Ready to analyze templates with AI assistance</p>
+            </div>
+          )}
+
+          {authState.error && (
+            <div className="auth-error">
+              <div className="auth-error-icon">✕</div>
+              <p className="auth-error-message">{authState.error}</p>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={onAuthenticate}
+              >
+                Try Again
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="actions actions-spaced">
-          <button type="button" className="secondary-button" onClick={onBack}>← Back</button>
-          <button
-            type="button"
-            className="primary-button"
-            disabled={!canProceed || loading}
-            onClick={onContinue}
-          >
-            Analyze & Plan <span>→</span>
+          <button type="button" className="secondary-button" onClick={onBack}>
+            ← Back
           </button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ── Page 5: Inventory ─────────────────────────────────────────────────────────
-
-function InventoryPage({
-  sourceFolder, progress, inventoryResult, inventoryError, onBack, onContinue,
-}: {
-  sourceFolder: string;
-  destinationFolder: string;
-  progress: InventoryProgress | null;
-  inventoryResult: InventoryResult | null;
-  inventoryError: string;
-  onBack: () => void;
-  onContinue: () => void;
-}) {
-  const running = progress !== null && progress.status !== "done" && progress.status !== "error";
-  const pct = progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
-  
-  // Show the actual folder being scanned (from result if available, else from progress)
-  const displayFolder = inventoryResult?.sourceDirectory || sourceFolder;
-
-  return (
-    <section className="content">
-      <div className="card inventory-card">
-        <div className="card-header">
-          <span className="step">05</span>
-          <div>
-            <h2>Source Inventory</h2>
-            <p>Building inventory from <strong className="folder-pill">{displayFolder}</strong></p>
-          </div>
-        </div>
-
-        {progress && (
-          <div className="inv-progress-block">
-            <div className="inv-progress-header">
-              <span className="inv-progress-label">{progress.message}</span>
-              {progress.total > 0 && <span className="inv-progress-count">{progress.processed} / {progress.total}</span>}
-            </div>
-            <div className="inv-progress-bar-track">
-              <div className={`inv-progress-bar-fill ${running ? "inv-progress-bar-fill--animated" : ""}`}
-                style={{ width: `${progress.status === "scanning" ? 5 : pct}%` }} />
-            </div>
-            {running && progress.currentFile && (
-              <p className="inv-current-file">{shortPath(progress.currentFile, sourceFolder)}</p>
-            )}
-          </div>
-        )}
-
-        {inventoryError && <p className="error-message">{inventoryError}</p>}
-
-        {inventoryResult && (
-          <>
-            <div className="stat-grid">
-              <StatCard label="Total files" value={inventoryResult.totalFiles} />
-              <StatCard label="Valid" value={inventoryResult.validFiles} accent />
-              <StatCard label="Invalid" value={inventoryResult.invalidFiles} warn={inventoryResult.invalidFiles > 0} />
-              <StatCard label="Unique templates" value={inventoryResult.uniqueTemplates.length} />
-              <StatCard label="Unique parents" value={inventoryResult.uniqueParents.length} />
-              <StatCard label="Duration" value={formatDuration(inventoryResult.durationMs)} />
-            </div>
-
-            {inventoryResult.errors.length > 0 && (
-              <details className="inv-errors">
-                <summary className="inv-errors-summary">
-                  {inventoryResult.errors.length} file{inventoryResult.errors.length !== 1 ? "s" : ""} could not be parsed
-                </summary>
-                <div className="inv-error-list">
-                  {inventoryResult.errors.map((e) => (
-                    <div key={e.filePath} className="inv-error-row">
-                      <span className="inv-error-path">{shortPath(e.filePath, sourceFolder)}</span>
-                      <span className="inv-error-msg">{e.error}</span>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </>
-        )}
-
-        <div className="actions actions-spaced">
-          <button type="button" className="secondary-button" onClick={onBack}>← Back</button>
-          {inventoryResult && inventoryResult.validFiles > 0 && (
+          {authState.authenticated && (
             <button type="button" className="primary-button" onClick={onContinue}>
-              Continue <span>→</span>
+              Analyze with AI <span>→</span>
             </button>
           )}
         </div>
@@ -486,6 +394,8 @@ function InventoryPage({
     </section>
   );
 }
+
+// ── Page 5: Inventory ─────────────────────────────────────────────────────────
 
 // ── Case Status Badge ─────────────────────────────────────────────────────────
 
@@ -515,13 +425,12 @@ function TemplateChip({ t }: { t: DiscoveredTemplate }) {
 }
 
 function AnalysisPage({
-  sourceFolder, progress, plan, analysisError, mcpWarnings, onBack, onContinue,
+  sourceFolder, progress, plan, analysisError, onBack, onContinue,
 }: {
   sourceFolder: string;
   progress: AnalysisProgress | null;
   plan: MigrationPlan | null;
   analysisError: string;
-  mcpWarnings: string[];
   onBack: () => void;
   onContinue: () => void;
 }) {
@@ -534,22 +443,12 @@ function AnalysisPage({
     <section className="content">
       <div className="card analysis-card">
         <div className="card-header">
-          <span className="step">06</span>
+          <span className="step">05</span>
           <div>
-            <h2>Analyze & Plan</h2>
-            <p>AI investigation across <strong className="folder-pill">{sourceFolder}</strong></p>
+            <h2>AI-Powered Analysis</h2>
+            <p>Discovering templates and generating migration plan for <strong className="folder-pill">{sourceFolder}</strong></p>
           </div>
         </div>
-
-        {/* MCP connectivity warnings */}
-        {mcpWarnings.length > 0 && (
-          <div className="mcp-warnings">
-            <span className="mcp-warn-icon">⚠</span>
-            <div>
-              {mcpWarnings.map((w, i) => <p key={i} className="mcp-warn-text">{w}</p>)}
-            </div>
-          </div>
-        )}
 
         {/* Live progress */}
         {progress && (
@@ -685,7 +584,7 @@ function ReviewPage({
     <section className="content">
       <div className="card review-card">
         <div className="card-header">
-          <span className="step">07</span>
+          <span className="step">06</span>
           <div>
             <h2>Review & Approve</h2>
             <p>Inspect every planned change before migration executes.</p>
@@ -779,16 +678,15 @@ function ReviewPage({
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-type Page = "folders" | "scan" | "scope-select" | "mcp-status" | "inventory" | "analysis" | "review";
+type Page = "folders" | "scan" | "scope-select" | "sitecoreai-auth" | "analysis" | "review";
 
 const STEPS: { key: Page; label: string }[] = [
   { key: "folders",       label: "01 Folders" },
   { key: "scan",          label: "02 Source Files" },
   { key: "scope-select",  label: "03 Migration Scope" },
-  { key: "mcp-status",    label: "04 MCP Status" },
-  { key: "inventory",     label: "05 Inventory" },
-  { key: "analysis",      label: "06 Analyze & Plan" },
-  { key: "review",        label: "07 Review & Approve" },
+  { key: "sitecoreai-auth", label: "04 SitecoreAI Auth" },
+  { key: "analysis",      label: "05 Analyze & Plan" },
+  { key: "review",        label: "06 Review & Approve" },
 ];
 
 export default function App() {
@@ -807,26 +705,26 @@ export default function App() {
   // Step 3 — scope selection
   const [selectedScope, setSelectedScope] = useState<string | null>(null);
 
-  // Step 4 — MCP status
-  const [mcpStatus, setMcpStatus] = useState<McpConnectionStatus | null>(null);
-  const [mcpStatusLoading, setMcpStatusLoading] = useState(false);
+  // Step 4 — SitecoreAI authentication
+  const [sitecoreAIAuth, setSitecoreAIAuth] = useState<{
+    authenticated: boolean;
+    authenticating: boolean;
+    error: string;
+    serverUrl?: string;
+  }>({
+    authenticated: false,
+    authenticating: false,
+    error: "",
+  });
 
-  // Step 5 — inventory
-  const [inventoryProgress, setInventoryProgress] = useState<InventoryProgress | null>(null);
-  const [inventoryResult, setInventoryResult] = useState<InventoryResult | null>(null);
-  const [inventoryError, setInventoryError] = useState("");
-  const invUnsubRef = useRef<(() => void) | null>(null);
-
-  // Step 6 — analysis
+  // Step 5 — analysis
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [migrationPlan, setMigrationPlan] = useState<MigrationPlan | null>(null);
   const [analysisError, setAnalysisError] = useState("");
-  const [mcpWarnings, setMcpWarnings] = useState<string[]>([]);
   const anlUnsubRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
-      invUnsubRef.current?.();
       anlUnsubRef.current?.();
     };
   }, []);
@@ -866,53 +764,43 @@ export default function App() {
   async function handleScopeContinue(scopeFolder: string) {
     console.log("🔍 Scope Continue - Setting selectedScope to:", scopeFolder);
     setSelectedScope(scopeFolder);
-    setMcpStatus(null);
-    setMcpStatusLoading(true);
-    setPage("mcp-status");
+    setSitecoreAIAuth({
+      authenticated: false,
+      authenticating: false,
+      error: "",
+    });
+    setPage("sitecoreai-auth");
+  }
+
+  async function handleAuthenticateSitecoreAI() {
+    setSitecoreAIAuth((prev) => ({ ...prev, authenticating: true, error: "" }));
     try {
-      const status = await window.electronAPI.checkMcpStatus();
-      setMcpStatus(status);
-    } catch (err) {
-      setMcpStatus({
-        xpConnected: false,
-        sitecoreAiConnected: false,
-        warnings: [],
-        errors: [err instanceof Error ? err.message : "Failed to check MCP status"],
+      const result = await window.electronAPI.authenticateSitecoreAI();
+      setSitecoreAIAuth({
+        authenticated: result.success,
+        authenticating: false,
+        error: result.success ? "" : (result.error || "Authentication failed"),
+        serverUrl: result.serverUrl,
       });
-    } finally {
-      setMcpStatusLoading(false);
-    }
-  }
-
-  async function handleMcpStatusContinue() {
-    console.log("🔍 MCP Status Continue - selectedScope:", selectedScope);
-    setInventoryProgress(null); setInventoryResult(null); setInventoryError("");
-    invUnsubRef.current?.();
-    const unsub = window.electronAPI.onInventoryProgress(setInventoryProgress);
-    invUnsubRef.current = unsub;
-    setPage("inventory");
-    try {
-      console.log("🔍 Calling runInventory with scope:", selectedScope || "undefined (using source)");
-      const { inventory } = await window.electronAPI.runInventory(sourceFolder, destinationFolder, selectedScope || undefined);
-      setInventoryResult(inventory);
     } catch (err) {
-      setInventoryError(err instanceof Error ? err.message : "Inventory failed.");
-    } finally {
-      unsub(); invUnsubRef.current = null;
+      setSitecoreAIAuth({
+        authenticated: false,
+        authenticating: false,
+        error: err instanceof Error ? err.message : "Authentication failed",
+      });
     }
   }
 
-  async function handleInventoryContinue() {
-    setAnalysisProgress(null); setMigrationPlan(null); setAnalysisError(""); setMcpWarnings([]);
+  async function handleAuthContinue() {
+    setAnalysisProgress(null); setMigrationPlan(null); setAnalysisError("");
     anlUnsubRef.current?.();
     const unsub = window.electronAPI.onAnalysisProgress(setAnalysisProgress);
     anlUnsubRef.current = unsub;
     setPage("analysis");
     try {
       const scopeToAnalyze = selectedScope || sourceFolder;
-      const { plan, mcpWarnings: warnings } = await window.electronAPI.runAnalysis(scopeToAnalyze);
+      const { plan } = await window.electronAPI.runAnalysis(scopeToAnalyze);
       setMigrationPlan(plan);
-      setMcpWarnings(warnings);
     } catch (err) {
       setAnalysisError(err instanceof Error ? err.message : "Analysis failed.");
     } finally {
@@ -950,13 +838,12 @@ export default function App() {
         </nav>
       </header>
 
-      {page === "folders"       && <FolderPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} pickerError={pickerError} onSelectSource={() => selectFolder(setSourceFolder)} onSelectDestination={() => selectFolder(setDestinationFolder)} onContinue={handleFoldersContinue} />}
-      {page === "scan"          && <ScanPage sourceFolder={sourceFolder} scanning={scanning} scanResult={scanResult} scanError={scanError} onBack={() => setPage("folders")} onContinue={handleScanContinue} />}
-      {page === "scope-select"  && scanResult && <ScopeSelectPage scanResult={scanResult} onBack={() => setPage("scan")} onContinue={handleScopeContinue} />}
-      {page === "mcp-status"    && <McpStatusPage mcpStatus={mcpStatus} loading={mcpStatusLoading} onBack={() => setPage("scope-select")} onContinue={handleMcpStatusContinue} />}
-      {page === "inventory"     && <InventoryPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} progress={inventoryProgress} inventoryResult={inventoryResult} inventoryError={inventoryError} onBack={() => setPage("mcp-status")} onContinue={handleInventoryContinue} />}
-      {page === "analysis"      && <AnalysisPage sourceFolder={sourceFolder} progress={analysisProgress} plan={migrationPlan} analysisError={analysisError} mcpWarnings={mcpWarnings} onBack={() => setPage("inventory")} onContinue={handleAnalysisContinue} />}
-      {page === "review"        && migrationPlan && <ReviewPage sourceFolder={sourceFolder} plan={migrationPlan} onBack={() => setPage("analysis")} onApprove={handleApprove} />}
+      {page === "folders"           && <FolderPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} pickerError={pickerError} onSelectSource={() => selectFolder(setSourceFolder)} onSelectDestination={() => selectFolder(setDestinationFolder)} onContinue={handleFoldersContinue} />}
+      {page === "scan"              && <ScanPage sourceFolder={sourceFolder} scanning={scanning} scanResult={scanResult} scanError={scanError} onBack={() => setPage("folders")} onContinue={handleScanContinue} />}
+      {page === "scope-select"      && scanResult && <ScopeSelectPage scanResult={scanResult} onBack={() => setPage("scan")} onContinue={handleScopeContinue} />}
+      {page === "sitecoreai-auth"   && <SitecoreAIAuthPage authState={sitecoreAIAuth} onAuthenticate={handleAuthenticateSitecoreAI} onBack={() => setPage("scope-select")} onContinue={handleAuthContinue} />}
+      {page === "analysis"          && <AnalysisPage sourceFolder={sourceFolder} progress={analysisProgress} plan={migrationPlan} analysisError={analysisError} onBack={() => setPage("sitecoreai-auth")} onContinue={handleAnalysisContinue} />}
+      {page === "review"            && migrationPlan && <ReviewPage sourceFolder={sourceFolder} plan={migrationPlan} onBack={() => setPage("analysis")} onApprove={handleApprove} />}
     </main>
   );
 }

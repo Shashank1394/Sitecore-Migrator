@@ -1158,3 +1158,129 @@ details[open] .inv-errors-summary::before {
   color: #78350f;
   line-height: 1.5;
 }
+
+/* ── SitecoreAI Auth Page ─────────────────────────────────────────────────── */
+
+.sitecoreai-auth-card {
+  max-width: 640px;
+}
+
+.auth-container {
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-prompt {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.auth-icon {
+  font-size: 56px;
+  margin-bottom: 20px;
+}
+
+.auth-prompt h3 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #17191c;
+}
+
+.auth-description {
+  margin: 0 0 32px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #6d7279;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.auth-button {
+  font-size: 16px;
+  padding: 14px 32px;
+}
+
+.auth-loading {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.auth-loading p {
+  margin: 8px 0;
+  font-size: 14px;
+  color: #6d7279;
+}
+
+.auth-hint {
+  font-size: 13px;
+  color: #9aa0a8;
+}
+
+.auth-success {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.auth-success-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.auth-success h3 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #17191c;
+}
+
+.auth-server {
+  margin: 8px 0;
+  font-size: 14px;
+  color: #6d7279;
+}
+
+.auth-ready {
+  margin: 16px 0 0;
+  font-size: 14px;
+  color: #2e7d32;
+  font-weight: 500;
+}
+
+.auth-error {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.auth-error-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  background: #ffebee;
+  color: #c62828;
+  font-size: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.auth-error-message {
+  margin: 0 0 24px;
+  font-size: 14px;
+  color: #c62828;
+  font-weight: 500;
+}

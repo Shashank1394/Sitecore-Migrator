@@ -10,11 +10,12 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"node node_modules/typescript/bin/tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:5173 file:dist/electron/main.js && node scripts/start-electron.cjs\"",
+    "dev": "concurrently -k \"vite\" \"node node_modules/typescript/bin/tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:5173 file:dist/electron/main.js && cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/start-electron.cjs\"",
     "build": "vite build && node node_modules/typescript/bin/tsc && node node_modules/typescript/bin/tsc -p tsconfig.electron.json",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.electron.json --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "dotenv": "^18.0.5",
     "electron": "^38.2.0",
     "js-yaml": "^4.1.0",
@@ -29,6 +30,7 @@
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
     "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
     "tsx": "^4.20.3",
     "typescript": "^5.9.3",
     "vite": "^7.1.7",

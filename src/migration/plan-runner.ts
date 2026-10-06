@@ -1,6 +1,5 @@
 import { loadMigrationInstructions } from "./instruction-loader.js";
-import { analyseCase } from "./case-analyser.js";
-import type { McpClients } from "./case-analyser.js";
+import { analyseCase, type McpClients } from "./case-analyser.js";
 import type { MigrationPlan, AnalysisProgress, CaseAnalysis } from "./analysis-types.js";
 
 export type AnalysisProgressCallback = (progress: AnalysisProgress) => void;

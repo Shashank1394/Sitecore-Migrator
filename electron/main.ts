@@ -16,8 +16,9 @@ import {
   type InventoryResult,
 } from "../src/migration/source-inventory.js";
 import { runAnalysis, type AnalysisProgressCallback } from "../src/migration/plan-runner.js";
-import { buildMcpClients } from "./mcp-client-factory.js";
 import type { MigrationPlan, AnalysisProgress } from "../src/migration/analysis-types.js";
+import { MarketerMcpClient } from "./marketer-mcp-client.js";
+import type { McpClients } from "../src/migration/case-analyser.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -223,33 +224,105 @@ export interface McpConnectionStatus {
 }
 
 ipcMain.handle("check-mcp-status", async (): Promise<McpConnectionStatus> => {
-  const { clients, status } = buildMcpClients();
+  // MCP is no longer required - using manual template mappings instead
+  console.log("🔍 MCP Status Check: Manual mapping mode (MCP not required)");
 
-  console.log("🔍 MCP Status Check:");
-  console.log("  XP connected:", status.xpConnected);
-  console.log("  SitecoreAI connected:", status.sitecoreAiConnected);
-  console.log("  Warnings:", status.warnings);
-
-  // Validate that critical clients work
+  // Check if template-mappings.json exists
+  const warnings: string[] = [];
   const errors: string[] = [];
 
-  if (!status.xpConnected) {
-    errors.push("Sitecore XP MCP is not configured. Set SITECORE_XP_GRAPHQL_ENDPOINT and SITECORE_XP_GRAPHQL_API_KEY.");
+  try {
+    const fs = await import("node:fs/promises");
+    const mappingPath = path.join(process.cwd(), "template-mappings.json");
+    await fs.access(mappingPath);
+    console.log("  ✓ template-mappings.json found");
+    warnings.push("Using manual template mappings from template-mappings.json");
+  } catch (err) {
+    errors.push("template-mappings.json not found in project root. Create it with source→target template GUIDs.");
+    console.log("  ✕ template-mappings.json not found");
   }
-
-  if (!status.sitecoreAiConnected) {
-    errors.push("SitecoreAI MCP is not configured. Set SITECORE_AI_ENDPOINT and SITECORE_AI_API_KEY.");
-  }
-
-  console.log("  Errors:", errors);
 
   return {
-    xpConnected: status.xpConnected,
-    sitecoreAiConnected: status.sitecoreAiConnected,
-    warnings: status.warnings,
+    xpConnected: false, // Not using MCP anymore
+    sitecoreAiConnected: false, // Not using MCP anymore
+    warnings,
     errors,
   };
 });
+
+// ── SitecoreAI Authentication ─────────────────────────────────────────────────
+
+export interface AuthenticationResult {
+  success: boolean;
+  error?: string;
+  serverUrl?: string;
+  token?: string;
+}
+
+let sitecoreAIServerUrl: string | null = null;
+let sitecoreAIClient: MarketerMcpClient | null = null;
+
+ipcMain.handle("authenticate-sitecoreai", async (): Promise<AuthenticationResult> => {
+  try {
+    // Read MCP configuration to get the server URL
+    const fs = await import("node:fs/promises");
+    const mcpConfigPath = path.join(process.cwd(), "mcp.json");
+    
+    let serverUrl = "https://marketer.sitecorecloud.io/mcp/marketer-mcp-prod";
+    
+    try {
+      const mcpContent = await fs.readFile(mcpConfigPath, "utf-8");
+      const mcpConfig = JSON.parse(mcpContent);
+      if (mcpConfig.servers?.["SitecoreAI Marketer"]?.url) {
+        serverUrl = mcpConfig.servers["SitecoreAI Marketer"].url;
+      }
+    } catch (err) {
+      console.warn("⚠ Could not read mcp.json, using default URL:", err);
+    }
+
+    console.log("🔐 Starting browser-based OAuth authentication for:", serverUrl);
+    console.log("ℹ Marketer MCP will automatically handle authentication through browser");
+    
+    const client = new MarketerMcpClient(serverUrl);
+    await client.connect();
+
+    // Preserve the in-memory OAuth token store for the analysis request.
+    sitecoreAIClient = client;
+    sitecoreAIServerUrl = serverUrl;
+    
+    console.log("✓ SitecoreAI MCP configured for automatic browser authentication");
+    
+    return {
+      success: true,
+      serverUrl,
+    };
+  } catch (err) {
+    console.error("❌ Authentication configuration error:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Authentication configuration failed",
+    };
+  }
+});
+
+export function getSitecoreAIServerUrl(): string | null {
+  return sitecoreAIServerUrl;
+}
+
+// ── SitecoreAI MCP Client Builder ─────────────────────────────────────────────
+
+async function buildSitecoreAIMcpClient(): Promise<McpClients> {
+  if (!sitecoreAIClient || !getSitecoreAIServerUrl()) {
+    throw new Error("SitecoreAI authentication required. Please authenticate first.");
+  }
+
+  console.log("🔌 Building SitecoreAI MCP client for automatic browser authentication");
+  console.log("🔗 Server URL:", getSitecoreAIServerUrl());
+
+  return {
+    sitecoreAI: sitecoreAIClient,
+  };
+}
 
 // ── Analysis / plan ───────────────────────────────────────────────────────────
 
@@ -269,20 +342,29 @@ ipcMain.handle(
       }
     };
 
-    const { clients, status } = buildMcpClients();
+    // Build SitecoreAI MCP client with automatic browser authentication
+    let clients: McpClients;
+    try {
+      clients = await buildSitecoreAIMcpClient();
+    } catch (err) {
+      sendProgress({
+        status: "error",
+        message: err instanceof Error ? err.message : "Failed to build MCP client",
+        completedCases: 0,
+        totalCases: 0,
+      });
+      throw err;
+    }
 
-    // Notify renderer immediately about MCP connectivity
     sendProgress({
       status: "starting",
-      message: status.warnings.length
-        ? `Starting analysis (warnings: ${status.warnings.join("; ")})`
-        : "Starting analysis…",
+      message: "Starting AI-powered template discovery…",
       completedCases: 0,
       totalCases: 0,
     });
-
+    
     const plan = await runAnalysis(scopeFolder, clients, sendProgress);
-    return { plan, mcpWarnings: status.warnings };
+    return { plan, mcpWarnings: [] };
   },
 );
 

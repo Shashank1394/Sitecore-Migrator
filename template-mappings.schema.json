@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Template Mappings",
+  "description": "Schema for mapping XP template GUIDs to SitecoreAI template GUIDs",
+  "type": "object",
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "Description of this mapping file"
+    },
+    "mappings": {
+      "type": "array",
+      "description": "Array of template mapping entries",
+      "items": {
+        "type": "object",
+        "required": [
+          "xpTemplateGuid",
+          "xpTemplateName",
+          "sitecoreAITemplateGuid",
+          "sitecoreAITemplateName"
+        ],
+        "properties": {
+          "xpTemplateGuid": {
+            "type": "string",
+            "pattern": "^\\{[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}\\}$",
+            "description": "Source XP template GUID in {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} format"
+          },
+          "xpTemplateName": {
+            "type": "string",
+            "description": "Human-readable name of the XP template"
+          },
+          "xpTemplatePath": {
+            "type": "string",
+            "description": "Full Sitecore path to the XP template"
+          },
+          "sitecoreAITemplateGuid": {
+            "type": "string",
+            "pattern": "^\\{[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}\\}$",
+            "description": "Target SitecoreAI template GUID in {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} format"
+          },
+          "sitecoreAITemplateName": {
+            "type": "string",
+            "description": "Human-readable name of the SitecoreAI template"
+          },
+          "sitecoreAITemplatePath": {
+            "type": "string",
+            "description": "Full Sitecore path to the SitecoreAI template"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Additional notes about this mapping"
+          }
+        }
+      }
+    }
+  },
+  "required": ["mappings"]
+}

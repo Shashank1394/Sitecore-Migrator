@@ -148,6 +148,15 @@ export interface RunAnalysisResult {
   mcpWarnings: string[];
 }
 
+// ── Authentication types ──────────────────────────────────────────────────────
+
+export interface AuthenticationResult {
+  success: boolean;
+  error?: string;
+  serverUrl?: string;
+  token?: string;
+}
+
 // ── Window augmentation ───────────────────────────────────────────────────────
 
 declare global {
@@ -155,15 +164,7 @@ declare global {
     electronAPI: {
       selectFolder: () => Promise<string | null>;
       scanSourceFolder: (folderPath: string) => Promise<ScanResult>;
-      runInventory: (
-        sourceFolder: string,
-        destinationFolder: string,
-        scopeFolder?: string,
-      ) => Promise<RunInventoryResult>;
-      onInventoryProgress: (
-        callback: (progress: InventoryProgress) => void,
-      ) => () => void;
-      checkMcpStatus: () => Promise<McpConnectionStatus>;
+      authenticateSitecoreAI: () => Promise<AuthenticationResult>;
       runAnalysis: (scopeFolder: string) => Promise<RunAnalysisResult>;
       onAnalysisProgress: (
         callback: (progress: AnalysisProgress) => void,

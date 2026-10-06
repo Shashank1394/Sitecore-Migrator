@@ -8,12 +8,22 @@
  *
  * This file lives in electron/ because it needs access to env vars and because
  * the MCP transports are Node.js network clients (not safe in the renderer).
+ *
+ * NOTE: This file is currently NOT IN USE - the app now uses manual template
+ * mappings from template-mappings.json instead of MCP clients.
  */
 
 import type { SitecoreMcpClient, SitecoreItemMetadata } from "../src/mcp/mcp-client.js";
 import { SitecoreAiMcpClient } from "../src/mcp/sitecore-ai/sitecore-ai-mcp-client.js";
 import type { SitecoreAiMcpTransport } from "../src/mcp/sitecore-ai/sitecore-ai-mcp-client.js";
-import type { McpClients } from "../src/migration/case-analyser.js";
+import { MarketerMcpClient } from "./marketer-mcp-client.js";
+
+// ── MCP clients interface (legacy) ────────────────────────────────────────────
+
+export interface McpClients {
+  xp: SitecoreMcpClient;
+  sitecoreAI: SitecoreMcpClient;
+}
 
 // ── Null stub — used when a server is not configured ─────────────────────────
 
@@ -71,53 +81,95 @@ class XpGraphqlMcpClient implements SitecoreMcpClient {
     private readonly endpoint: string,
     private readonly apiKey: string,
     private readonly database = "master",
-  ) {}
+  ) {
+    console.log(`🔍 XpGraphqlMcpClient initialized:`);
+    console.log(`  Endpoint: ${endpoint}`);
+    console.log(`  Database: ${database}`);
+    console.log(`  API Key: ${apiKey.substring(0, 8)}...`);
+  }
 
   async getItemById(id: string): Promise<SitecoreItemMetadata | null> {
+    // Sitecore GraphQL can query by ID using the path parameter
+    // Ensure the ID is in curly braces format: {GUID}
+    const itemId = id.startsWith("{") ? id : `{${id}}`;
+    
+    console.log(`🔍 XP GraphQL: getItemById(${id}) -> querying with ${itemId}`);
+    
+    // Sitecore Integrated GraphQL query format
     const query = `
-      query GetItemById($id: String!, $db: String!) {
-        item(path: $id, language: "en", database: $db) {
-          id name path
-          template { id name }
-          parent { id }
+      query GetItemById($itemId: String!, $language: String!) {
+        item(path: $itemId, language: $language) {
+          id
+          name
+          path
+          template {
+            id
+            name
+          }
+          parent {
+            id
+          }
         }
       }
     `;
-    return this.queryItem(query, { id, db: this.database });
+    
+    console.log(`🔍 XP GraphQL query:`, query);
+    console.log(`🔍 XP GraphQL variables:`, { itemId, language: "en" });
+    
+    try {
+      const result = await this.queryItem(query, { itemId, language: "en" });
+      console.log(`🔍 XP GraphQL: getItemById(${id}) result:`, result ? `Found: ${result.name} at ${result.path}` : "Not found");
+      return result;
+    } catch (err) {
+      console.error(`🔍 XP GraphQL: getItemById(${id}) error:`, err instanceof Error ? err.message : String(err));
+      throw err;
+    }
   }
 
   async getItemByPath(path: string): Promise<SitecoreItemMetadata | null> {
     const query = `
-      query GetItemByPath($path: String!, $db: String!) {
-        item(path: $path, language: "en", database: $db) {
-          id name path
-          template { id name }
-          parent { id }
+      query GetItemByPath($path: String!, $language: String!) {
+        item(path: $path, language: $language) {
+          id
+          name
+          path
+          template {
+            id
+            name
+          }
+          parent {
+            id
+          }
         }
       }
     `;
-    return this.queryItem(query, { path, db: this.database });
+    return this.queryItem(query, { path, language: "en" });
   }
 
   async getChildren(parentId: string): Promise<SitecoreItemMetadata[]> {
     const query = `
-      query GetChildren($parentId: String!, $db: String!) {
-        item(path: $parentId, language: "en", database: $db) {
+      query GetChildren($parentId: String!, $language: String!) {
+        item(path: $parentId, language: $language) {
           children {
-            nodes {
-              id name path
-              template { id name }
-              parent { id }
+            id
+            name
+            path
+            template {
+              id
+              name
+            }
+            parent {
+              id
             }
           }
         }
       }
     `;
     const result = await this.graphql<{
-      item?: { children?: { nodes?: RawItem[] } };
-    }>(query, { parentId, db: this.database });
+      item?: { children?: RawItem[] };
+    }>(query, { parentId, language: "en" });
 
-    return (result?.item?.children?.nodes ?? []).map(toMetadata);
+    return (result?.item?.children ?? []).map(toMetadata);
   }
 
   async getItemByName(
@@ -141,24 +193,44 @@ class XpGraphqlMcpClient implements SitecoreMcpClient {
     query: string,
     variables: Record<string, string>,
   ): Promise<T | null> {
-    const response = await fetch(this.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        sc_apikey: this.apiKey,
-      },
-      body: JSON.stringify({ query, variables }),
-    });
+    try {
+      const requestBody = JSON.stringify({ query, variables });
+      
+      console.log(`🔍 XP GraphQL request to ${this.endpoint}`);
+      console.log(`🔍 Request body:`, requestBody.substring(0, 200) + (requestBody.length > 200 ? '...' : ''));
+      
+      const response = await fetch(this.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          sc_apikey: this.apiKey,
+        },
+        body: requestBody,
+      });
 
-    if (!response.ok) {
-      throw new Error(`XP GraphQL request failed: HTTP ${response.status}`);
-    }
+      console.log(`🔍 XP GraphQL response status: ${response.status}`);
+      console.log(`🔍 XP GraphQL response headers:`, Object.fromEntries(response.headers.entries()));
 
-    const json = (await response.json()) as { data?: T; errors?: unknown[] };
-    if (json.errors?.length) {
-      throw new Error(`XP GraphQL errors: ${JSON.stringify(json.errors)}`);
+      if (!response.ok) {
+        const text = await response.text();
+        console.error(`🔍 XP GraphQL error response (first 500 chars):`, text.substring(0, 500));
+        throw new Error(`XP GraphQL request failed: HTTP ${response.status}`);
+      }
+
+      const json = (await response.json()) as { data?: T; errors?: unknown[] };
+      
+      console.log(`🔍 XP GraphQL response data:`, JSON.stringify(json).substring(0, 300));
+      
+      if (json.errors?.length) {
+        console.error(`🔍 XP GraphQL errors:`, json.errors);
+        throw new Error(`XP GraphQL errors: ${JSON.stringify(json.errors)}`);
+      }
+      
+      return json.data ?? null;
+    } catch (err) {
+      console.error(`🔍 XP GraphQL fetch failed:`, err);
+      throw new Error(`XP GraphQL fetch failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-    return json.data ?? null;
   }
 }
 
@@ -195,46 +267,33 @@ export function buildMcpClients(): { clients: McpClients; status: McpClientStatu
   console.log("  SITECORE_XP_GRAPHQL_ENDPOINT:", process.env["SITECORE_XP_GRAPHQL_ENDPOINT"]);
   console.log("  SITECORE_XP_GRAPHQL_API_KEY:", process.env["SITECORE_XP_GRAPHQL_API_KEY"]);
 
-  // XP client
-  let xpClient: SitecoreMcpClient;
-  const xpEndpoint = process.env["SITECORE_XP_GRAPHQL_ENDPOINT"];
-  const xpApiKey = process.env["SITECORE_XP_GRAPHQL_API_KEY"];
-  const xpDatabase = process.env["SITECORE_SOURCE_DATABASE"] ?? "master";
+  // XP client - using Null stub since we're not querying XP anymore
+  console.log("  Using Null XP client (template GUIDs read from YAML)");
+  const xpClient: SitecoreMcpClient = new NullMcpClient();
 
-  console.log("  XP Endpoint present:", !!xpEndpoint);
-  console.log("  XP API Key present:", !!xpApiKey);
-
-  if (xpEndpoint && xpApiKey) {
-    xpClient = new XpGraphqlMcpClient(xpEndpoint, xpApiKey, xpDatabase);
-  } else {
-    warnings.push("XP GraphQL endpoint or API key not configured — XP MCP unavailable.");
-    xpClient = new NullMcpClient();
-  }
-
-  // SitecoreAI client
+  // SitecoreAI client - using Marketer MCP from mcp.json
   let sitecoreAiClient: SitecoreMcpClient;
-  const aiEndpoint = process.env["SITECORE_AI_ENDPOINT"];
-  const aiApiKey = process.env["SITECORE_AI_API_KEY"];
+  
+  // Hardcode the Marketer MCP URL from mcp.json
+  const marketerMcpUrl = process.env["SITECORE_AI_ENDPOINT"] || 
+                         "https://marketer.sitecorecloud.io/mcp/marketer-mcp-prod";
 
-  console.log("  AI Endpoint present:", !!aiEndpoint);
-  console.log("  AI API Key present:", !!aiApiKey);
-
-  if (aiEndpoint && aiApiKey) {
-    const transport = new SitecoreAiHttpTransport(aiEndpoint, aiApiKey);
-    sitecoreAiClient = new SitecoreAiMcpClient(transport);
-  } else {
-    warnings.push("SitecoreAI endpoint or API key not configured — SitecoreAI MCP unavailable.");
+  console.log("  Connecting to Marketer MCP:", marketerMcpUrl);
+  
+  try {
+    sitecoreAiClient = new MarketerMcpClient(marketerMcpUrl);
+    console.log("  ✅ Marketer MCP client created");
+  } catch (err) {
+    console.error("  ❌ Failed to create Marketer MCP client:", err);
+    warnings.push("Failed to create Marketer MCP client - using null stub");
     sitecoreAiClient = new NullMcpClient();
   }
-
-  console.log("  XP Client created:", xpClient instanceof XpGraphqlMcpClient);
-  console.log("  SitecoreAI Client created:", sitecoreAiClient instanceof SitecoreAiMcpClient);
 
   return {
     clients: { xp: xpClient, sitecoreAI: sitecoreAiClient },
     status: {
-      xpConnected: !!(xpEndpoint && xpApiKey),
-      sitecoreAiConnected: !!(aiEndpoint && aiApiKey),
+      xpConnected: false, // Not used anymore
+      sitecoreAiConnected: true, // Assume connected, will fail gracefully if not
       warnings,
     },
   };

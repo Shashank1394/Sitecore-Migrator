@@ -90,16 +90,6 @@ export async function runSourceInventory(
   for (let i = 0; i < filePaths.length; i++) {
     const filePath = filePaths[i]!;
 
-    onProgress({
-      processed: i,
-      total,
-      currentFile: filePath,
-      validSoFar: entries.length,
-      invalidSoFar: errors.length,
-      status: "processing",
-      message: `Processing file ${i + 1} of ${total}…`,
-    });
-
     try {
       const [item, fileHash] = await Promise.all([
         readYamlFile(filePath),
@@ -132,6 +122,17 @@ export async function runSourceInventory(
         error: err instanceof Error ? err.message : String(err),
       });
     }
+
+    // Send progress update AFTER processing the file
+    onProgress({
+      processed: i + 1,
+      total,
+      currentFile: filePath,
+      validSoFar: entries.length,
+      invalidSoFar: errors.length,
+      status: "processing",
+      message: `Processing file ${i + 1} of ${total}…`,
+    });
   }
 
   const durationMs = Date.now() - startedAt;

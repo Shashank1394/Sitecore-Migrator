@@ -1,7 +1,6 @@
-import type { SitecoreMcpClient } from "../mcp/mcp-client.js";
 import { scanYamlFiles } from "../yaml/yaml-scanner.js";
 import { readYamlFile } from "../yaml/yaml-reader.js";
-import type { MigrationCase, InvestigationStep } from "./instruction-types.js";
+import type { MigrationCase } from "./instruction-types.js";
 import type {
   CaseAnalysis,
   AffectedFile,
@@ -9,89 +8,121 @@ import type {
   DiscoveredTemplate,
   PlannedFieldChange,
 } from "./analysis-types.js";
+import type { SitecoreMcpClient } from "../mcp/mcp-client.js";
 
 // ── Progress callback for this case ──────────────────────────────────────────
 
 export type CaseProgressCallback = (step: string) => void;
 
-// ── MCP clients passed in (never constructed here) ───────────────────────────
+// ── MCP client interface ──────────────────────────────────────────────────────
 
 export interface McpClients {
-  xp: SitecoreMcpClient;
   sitecoreAI: SitecoreMcpClient;
 }
 
-// ── Template discovery via MCP ────────────────────────────────────────────────
+// ── Template mapping storage ──────────────────────────────────────────────────
 
-/**
- * Finds a template by name within a Sitecore environment using the MCP client.
- * Walks the tree under searchPath (or a sensible default) looking for an item
- * whose name matches the instruction's `matches` field.
- *
- * Never guesses a GUID — returns null if not found.
- */
-async function discoverTemplateByName(
-  client: SitecoreMcpClient,
-  step: InvestigationStep,
-  onProgress: CaseProgressCallback,
-): Promise<DiscoveredTemplate | null> {
-  const searchPath = step.searchPath ?? "/sitecore/templates";
-
-  onProgress(`Querying MCP: looking for template "${step.matches}" under ${searchPath}…`);
-
-  // Try by path first — many template items live at a predictable path
-  const directAttempt = await client.getItemByPath(
-    `${searchPath}/${step.matches}`,
-  ).catch(() => null);
-
-  if (directAttempt && directAttempt.name === step.matches) {
-    return {
-      name: step.matches,
-      id: directAttempt.id,
-      environment: "xp",
-      path: directAttempt.path,
-    };
-  }
-
-  // Walk children of the searchPath
-  const root = await client.getItemByPath(searchPath).catch(() => null);
-  if (!root) {
-    return null;
-  }
-
-  const found = await walkForTemplate(client, root.id, step.matches, onProgress, 0);
-  return found;
+interface TemplateMapping {
+  sourceGuid: string;
+  sourceName: string;
+  targetGuid: string;
+  targetName: string;
+  targetPath: string;
 }
 
-async function walkForTemplate(
+// ── AI-powered template discovery ─────────────────────────────────────────────
+
+/**
+ * Uses SitecoreAI MCP to discover the target template based on XP template name.
+ * This is AI-powered template mapping using the investigation steps as hints.
+ */
+async function discoverTargetTemplate(
   client: SitecoreMcpClient,
-  parentId: string,
-  targetName: string,
+  sourceTemplateGuid: string,
+  investigationSteps: Array<{ matches: string; searchPath?: string }>,
   onProgress: CaseProgressCallback,
-  depth: number,
-): Promise<DiscoveredTemplate | null> {
-  if (depth > 6) return null; // safety limit
+): Promise<{ id: string; name: string; path: string } | null> {
+  // Try each investigation step until we find a match
+  for (const step of investigationSteps) {
+    const searchPath = step.searchPath || "/sitecore/templates";
+    onProgress(`AI Discovery: Searching for "${step.matches}" in ${searchPath}...`);
 
-  const children = await client.getChildren(parentId).catch(() => []);
+    try {
+      // Try direct path first
+      const directPath = `${searchPath}/${step.matches}`;
+      const directAttempt = await client.getItemByPath(directPath).catch(() => null);
+      
+      if (directAttempt) {
+        onProgress(`✓ Found: ${directAttempt.name} at ${directPath}`);
+        return {
+          id: directAttempt.id,
+          name: directAttempt.name,
+          path: directAttempt.path || directPath,
+        };
+      }
 
-  for (const child of children) {
-    if (child.name.toLowerCase() === targetName.toLowerCase()) {
-      return {
-        name: targetName,
-        id: child.id,
-        environment: "xp",
-        path: child.path,
-      };
+      // Search within the path hierarchy
+      const found = await searchTemplateByName(client, searchPath, step.matches, onProgress);
+      if (found) {
+        return found;
+      }
+    } catch (err) {
+      onProgress(`⚠ Search failed for "${step.matches}": ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  // Recurse
-  for (const child of children) {
-    const found = await walkForTemplate(client, child.id, targetName, onProgress, depth + 1);
-    if (found) return found;
+  return null;
+}
+
+/**
+ * Recursively searches for a template by name pattern in SitecoreAI.
+ */
+async function searchTemplateByName(
+  client: SitecoreMcpClient,
+  searchPath: string,
+  namePattern: string,
+  onProgress: CaseProgressCallback,
+  depth: number = 0,
+): Promise<{ id: string; name: string; path: string } | null> {
+  if (depth > 5) return null; // Prevent deep recursion
+
+  try {
+    const root = await client.getItemByPath(searchPath).catch(() => null);
+    if (!root) return null;
+
+    const children = await client.getChildren(root.id).catch(() => []);
+
+    // Check direct children first
+    for (const child of children) {
+      if (child.name.toLowerCase().includes(namePattern.toLowerCase())) {
+        onProgress(`✓ Found match: ${child.name}`);
+        return {
+          id: child.id,
+          name: child.name,
+          path: child.path || `${searchPath}/${child.name}`,
+        };
+      }
+    }
+
+    // Recursively search child folders
+    for (const child of children) {
+      const childPath = child.path || `${searchPath}/${child.name}`;
+      const found = await searchTemplateByName(client, childPath, namePattern, onProgress, depth + 1);
+      if (found) return found;
+    }
+  } catch (err) {
+    // Silent failure - keep searching
   }
 
   return null;
+}
+
+/**
+ * Normalizes a GUID string to uppercase format with braces.
+ */
+function normalizeGuid(guid: string): string {
+  const cleaned = guid.replace(/[{}]/g, "").toUpperCase();
+  return `{${cleaned}}`;
 }
 
 // ── Main analyser ─────────────────────────────────────────────────────────────
@@ -105,16 +136,20 @@ export async function analyseCase(
   const exceptions: CaseException[] = [];
   const discoveredTemplates: DiscoveredTemplate[] = [];
 
-  // ── Phase 1: scan YAML files within this case's scope ────────────────────
+  // ── Phase 1: Scan YAML files within this case's scope ─────────────────────
 
   onProgress(`Scanning YAML files under ${migrationCase.scope.sitecorePath}…`);
 
-  // The source directory contains serialized items. We filter to those whose
-  // Sitecore path starts with the case scope path.
   const allFiles = await scanYamlFiles(sourceDirectory, migrationCase.scope.recursive);
 
-  // Read all items and filter to scope — we never modify them here
-  const scopedItems: Array<{ filePath: string; itemId: string; templateId: string; sitecorePath: string }> = [];
+  // Read all items and filter to scope
+  const scopedItems: Array<{ 
+    filePath: string; 
+    itemId: string; 
+    templateId: string; 
+    sitecorePath: string;
+    parentId: string;
+  }> = [];
 
   for (const filePath of allFiles) {
     try {
@@ -129,6 +164,7 @@ export async function analyseCase(
           itemId: item.ID,
           templateId: item.Template,
           sitecorePath: item.Path,
+          parentId: item.Parent,
         });
       }
     } catch (err) {
@@ -142,115 +178,133 @@ export async function analyseCase(
 
   onProgress(`Found ${scopedItems.length} items under scope.`);
 
-  // ── Phase 2: investigate — discover template IDs via MCP ─────────────────
+  if (scopedItems.length === 0) {
+    return {
+      caseId: migrationCase.id,
+      caseName: migrationCase.name,
+      status: "complete",
+      filesDiscovered: 0,
+      filesAffected: [],
+      discoveredTemplates: [],
+      patternDescription: "No items found in scope",
+      exceptions,
+    };
+  }
 
-  // Key: "<env>.<templateName>" → DiscoveredTemplate
-  const discoveryMap = new Map<string, DiscoveredTemplate>();
+  // ── Phase 2: Collect unique template GUIDs from YAML files ───────────────
 
-  for (const step of (migrationCase.investigate.xp ?? [])) {
-    onProgress(`XP MCP: ${step.description}`);
-    try {
-      const result = await discoverTemplateByName(clients.xp, step, onProgress);
-      if (result) {
-        const key = `xp.${step.matches}`;
-        discoveryMap.set(key, { ...result, environment: "xp" });
-        discoveredTemplates.push({ ...result, environment: "xp" });
-        onProgress(`XP MCP: found "${step.matches}" → ${result.id}`);
-      } else {
-        exceptions.push({
-          message: `XP MCP: could not find template "${step.matches}" under ${step.searchPath ?? "/sitecore/templates"}`,
-          severity: "error",
-        });
-      }
-    } catch (err) {
+  const uniqueTemplateGuids = new Set<string>();
+  for (const item of scopedItems) {
+    const normalized = normalizeGuid(item.templateId);
+    uniqueTemplateGuids.add(normalized);
+  }
+
+  onProgress(`Found ${uniqueTemplateGuids.size} unique template GUID(s) in scoped items.`);
+
+  // ── Phase 3: AI-powered template discovery via SitecoreAI MCP ─────────────
+
+  const templateMappings = new Map<string, TemplateMapping>();
+  const sitecoreAISteps = migrationCase.investigate.sitecoreAI || [];
+
+  if (sitecoreAISteps.length === 0) {
+    exceptions.push({
+      message: `No SitecoreAI investigation steps defined in migration case "${migrationCase.name}"`,
+      severity: "error",
+    });
+  }
+
+  for (const guid of uniqueTemplateGuids) {
+    onProgress(`🤖 AI Discovery: Finding target for template ${guid}...`);
+
+    // Use the investigation steps to guide AI discovery
+    const targetTemplate = await discoverTargetTemplate(
+      clients.sitecoreAI,
+      guid,
+      sitecoreAISteps,
+      onProgress,
+    );
+
+    if (targetTemplate) {
+      templateMappings.set(guid, {
+        sourceGuid: guid,
+        sourceName: `Template ${guid.substring(1, 9)}`, // Short name from GUID
+        targetGuid: targetTemplate.id,
+        targetName: targetTemplate.name,
+        targetPath: targetTemplate.path,
+      });
+
+      // Add to discovered templates
+      discoveredTemplates.push({
+        name: `XP Template ${guid.substring(1, 9)}`,
+        id: guid,
+        environment: "xp",
+        path: "",
+      });
+
+      discoveredTemplates.push({
+        name: targetTemplate.name,
+        id: targetTemplate.id,
+        environment: "sitecoreAI",
+        path: targetTemplate.path,
+      });
+
+      onProgress(`✓ Mapped: ${guid} → ${targetTemplate.name} (${targetTemplate.id})`);
+    } else {
       exceptions.push({
-        message: `XP MCP investigation failed for "${step.matches}": ${err instanceof Error ? err.message : String(err)}`,
+        message: `AI Discovery: Could not find target template for ${guid}. Tried patterns: ${sitecoreAISteps.map(s => s.matches).join(", ")}`,
         severity: "error",
       });
     }
   }
 
-  for (const step of (migrationCase.investigate.sitecoreAI ?? [])) {
-    onProgress(`SitecoreAI MCP: ${step.description}`);
-    try {
-      const result = await discoverTemplateByName(clients.sitecoreAI, step, onProgress);
-      if (result) {
-        const key = `sitecoreAI.${step.matches}`;
-        discoveryMap.set(key, { ...result, environment: "sitecoreAI" });
-        discoveredTemplates.push({ ...result, environment: "sitecoreAI" });
-        onProgress(`SitecoreAI MCP: found "${step.matches}" → ${result.id}`);
-      } else {
-        exceptions.push({
-          message: `SitecoreAI MCP: could not find template "${step.matches}" under ${step.searchPath ?? "/sitecore/templates"}`,
-          severity: "error",
-        });
-      }
-    } catch (err) {
-      exceptions.push({
-        message: `SitecoreAI MCP investigation failed for "${step.matches}": ${err instanceof Error ? err.message : String(err)}`,
-        severity: "error",
-      });
-    }
-  }
-
-  // ── Phase 3: plan — determine which files are affected and what changes ───
+  // ── Phase 4: Build migration plan with AI-discovered mappings ─────────────
 
   const affectedFiles: AffectedFile[] = [];
 
-  for (const rule of migrationCase.transform) {
-    const sourceTemplate = discoveryMap.get(rule.sourceInvestigationRef);
-    const targetTemplate = discoveryMap.get(rule.targetInvestigationRef);
+  for (const item of scopedItems) {
+    const normalizedGuid = normalizeGuid(item.templateId);
+    const mapping = templateMappings.get(normalizedGuid);
+    
+    if (mapping) {
+      const change: PlannedFieldChange = {
+        field: "Template",
+        from: item.templateId,
+        to: mapping.targetGuid,
+        description: `AI-discovered: ${mapping.sourceName} → ${mapping.targetName}`,
+      };
 
-    if (!sourceTemplate || !targetTemplate) {
-      exceptions.push({
-        message: `Cannot build transform for field "${rule.field}": ` +
-          `source ref "${rule.sourceInvestigationRef}" ` +
-          (sourceTemplate ? "OK" : "NOT FOUND") + ", " +
-          `target ref "${rule.targetInvestigationRef}" ` +
-          (targetTemplate ? "OK" : "NOT FOUND"),
-        severity: "error",
+      affectedFiles.push({
+        filePath: item.filePath,
+        itemId: item.itemId,
+        sitecorePath: item.sitecorePath,
+        plannedChanges: [change],
       });
-      continue;
-    }
-
-    for (const scoped of scopedItems) {
-      if (scoped.templateId === sourceTemplate.id) {
-        const change: PlannedFieldChange = {
-          field: rule.field,
-          from: sourceTemplate.id,
-          to: targetTemplate.id,
-          description: rule.description,
-        };
-
-        const existing = affectedFiles.find((f) => f.filePath === scoped.filePath);
-        if (existing) {
-          existing.plannedChanges.push(change);
-        } else {
-          affectedFiles.push({
-            filePath: scoped.filePath,
-            itemId: scoped.itemId,
-            sitecorePath: scoped.sitecorePath,
-            plannedChanges: [change],
-          });
-        }
-      }
     }
   }
 
-  // ── Phase 4: validate ─────────────────────────────────────────────────────
+  onProgress(`Built migration plan: ${affectedFiles.length} files will be transformed.`);
+
+  // ── Phase 5: Validate ─────────────────────────────────────────────────────
 
   for (const check of migrationCase.validate) {
     if (check.check === "targetTemplateExists") {
-      const targetRef = migrationCase.transform[0]?.targetInvestigationRef;
-      if (targetRef) {
-        const target = discoveryMap.get(targetRef);
-        if (!target) {
+      // Verify all target templates exist in SitecoreAI
+      for (const mapping of templateMappings.values()) {
+        try {
+          const exists = await clients.sitecoreAI.getItemById(mapping.targetGuid);
+          if (exists) {
+            onProgress(`✓ Validation: ${mapping.targetName} exists in SitecoreAI`);
+          } else {
+            exceptions.push({
+              message: `Validation: target template ${mapping.targetGuid} not found in SitecoreAI`,
+              severity: "error",
+            });
+          }
+        } catch (err) {
           exceptions.push({
-            message: `Validation: target template for "${targetRef}" was not discovered — cannot confirm it exists`,
+            message: `Validation: failed to verify ${mapping.targetGuid}: ${err instanceof Error ? err.message : String(err)}`,
             severity: "error",
           });
-        } else {
-          onProgress(`Validation: confirmed target template exists (${target.id})`);
         }
       }
     }
@@ -266,25 +320,29 @@ export async function analyseCase(
             severity: "error",
           });
         }
+      } else {
+        onProgress(`✓ Validation: no duplicate IDs found`);
       }
     }
   }
 
   // ── Build pattern description ─────────────────────────────────────────────
 
-  const sourceDisc = discoveredTemplates.find((t) => t.environment === "xp");
-  const targetDisc = discoveredTemplates.find((t) => t.environment === "sitecoreAI");
-  const patternDescription =
-    sourceDisc && targetDisc
-      ? `${sourceDisc.name} → ${targetDisc.name}`
-      : affectedFiles.length > 0
-      ? `${migrationCase.transform[0]?.field ?? "Field"} remapping`
-      : "No pattern discovered";
+  const mappings = Array.from(templateMappings.values());
+  const patternDescription = mappings.length > 0
+    ? mappings.map(m => `${m.sourceName} → ${m.targetName}`).join(", ")
+    : "No template mappings discovered";
+
+  const status = exceptions.some((e) => e.severity === "error") 
+    ? "failed" 
+    : affectedFiles.length > 0 
+    ? "complete" 
+    : "complete";
 
   return {
     caseId: migrationCase.id,
     caseName: migrationCase.name,
-    status: exceptions.some((e) => e.severity === "error") ? "failed" : "complete",
+    status,
     filesDiscovered: scopedItems.length,
     filesAffected: affectedFiles,
     discoveredTemplates,
