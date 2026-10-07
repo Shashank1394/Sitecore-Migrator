@@ -302,7 +302,6 @@ interface SitecoreAIAuthState {
   authenticated: boolean;
   authenticating: boolean;
   error: string;
-  serverUrl?: string;
 }
 
 function SitecoreAIAuthPage({
@@ -357,11 +356,8 @@ function SitecoreAIAuthPage({
           {authState.authenticated && (
             <div className="auth-success">
               <div className="auth-success-icon">✓</div>
-              <h3>Successfully Authenticated</h3>
-              {authState.serverUrl && (
-                <p className="auth-server">Connected to: <strong>{authState.serverUrl}</strong></p>
-              )}
-              <p className="auth-ready">Ready to analyze templates with AI assistance</p>
+              <h3>Connected to SitecoreAI</h3>
+              <p className="auth-ready">Ready to analyze templates</p>
             </div>
           )}
 
@@ -777,10 +773,9 @@ export default function App() {
     try {
       const result = await window.electronAPI.authenticateSitecoreAI();
       setSitecoreAIAuth({
-        authenticated: result.success,
+        authenticated: result.connected,
         authenticating: false,
-        error: result.success ? "" : (result.error || "Authentication failed"),
-        serverUrl: result.serverUrl,
+        error: result.connected ? "" : (result.error || "Connection failed"),
       });
     } catch (err) {
       setSitecoreAIAuth({
@@ -811,8 +806,15 @@ export default function App() {
   function handleAnalysisContinue() { setPage("review"); }
 
   function handleApprove() {
-    // Migrate step — not yet implemented
-    // Plan is approved; next stage will execute transforms
+    if (!migrationPlan) return;
+    void (async () => {
+      try {
+        const { applied, errors } = await window.electronAPI.applyMigration(migrationPlan, sourceFolder, destinationFolder);
+        alert(`Migration complete!\n\n✓ ${applied} file(s) updated in destination folder: ${destinationFolder}.${errors.length > 0 ? `\n\n⚠ ${errors.length} error(s):\n${errors.join("\n")}` : ""}`);
+      } catch (err) {
+        alert(`Migration failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    })();
   }
 
   // ── Breadcrumb ──

@@ -90,7 +90,13 @@ interface CaseException {
 interface CaseAnalysis {
   caseId: string;
   caseName: string;
-  status: "pending" | "investigating" | "planning" | "complete" | "failed" | "skipped";
+  status:
+    | "pending"
+    | "investigating"
+    | "planning"
+    | "complete"
+    | "failed"
+    | "skipped";
   filesDiscovered: number;
   filesAffected: AffectedFile[];
   discoveredTemplates: DiscoveredTemplate[];
@@ -109,7 +115,14 @@ interface MigrationPlan {
 }
 
 interface AnalysisProgress {
-  status: "starting" | "loading-instructions" | "investigating" | "planning" | "validating" | "complete" | "error";
+  status:
+    | "starting"
+    | "loading-instructions"
+    | "investigating"
+    | "planning"
+    | "validating"
+    | "complete"
+    | "error";
   message: string;
   currentCase?: string;
   completedCases: number;
@@ -119,7 +132,6 @@ interface AnalysisProgress {
 
 interface RunAnalysisResult {
   plan: MigrationPlan;
-  mcpWarnings: string[];
 }
 
 interface McpConnectionStatus {
@@ -130,10 +142,8 @@ interface McpConnectionStatus {
 }
 
 interface AuthenticationResult {
-  success: boolean;
+  connected: boolean;
   error?: string;
-  serverUrl?: string;
-  token?: string;
 }
 
 // ── Exposed API ───────────────────────────────────────────────────────────────
@@ -155,13 +165,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
   runAnalysis: (scopeFolder: string): Promise<RunAnalysisResult> =>
     ipcRenderer.invoke("run-analysis", scopeFolder),
 
+  // Apply approved plan (copy source to destination and write YAML files)
+  applyMigration: (plan: MigrationPlan, sourceFolder: string, destinationFolder: string): Promise<{ applied: number; errors: string[] }> =>
+    ipcRenderer.invoke("apply-migration", plan, sourceFolder, destinationFolder),
+
+  onApplyProgress: (callback: (message: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: string) => {
+      callback(message);
+    };
+    ipcRenderer.on("apply-progress", listener);
+    return () => ipcRenderer.removeListener("apply-progress", listener);
+  },
+
   onAnalysisProgress: (
     callback: (progress: AnalysisProgress) => void,
   ): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, progress: AnalysisProgress) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      progress: AnalysisProgress,
+    ) => {
       callback(progress);
     };
+
     ipcRenderer.on("analysis-progress", listener);
+
     return () => ipcRenderer.removeListener("analysis-progress", listener);
   },
 });
+

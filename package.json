@@ -12,14 +12,9 @@
   "scripts": {
     "dev": "concurrently -k \"vite\" \"node node_modules/typescript/bin/tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:5173 file:dist/electron/main.js && cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/start-electron.cjs\"",
     "build": "vite build && node node_modules/typescript/bin/tsc && node node_modules/typescript/bin/tsc -p tsconfig.electron.json",
-    "typecheck": "node node_modules/typescript/bin/tsc --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.electron.json --noEmit",
-    "test:llm": "tsx scripts/test-llm.ts",
-    "test:unit": "tsx scripts/run-unit-tests.ts",
-    "test:mcp-llm": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx scripts/test-mcp-llm.ts"
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.electron.json --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
-    "@openrouter/sdk": "^1.4.22",
     "dotenv": "^18.0.5",
     "electron": "^38.2.0",
     "js-yaml": "^4.1.0",

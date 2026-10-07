@@ -145,16 +145,13 @@ export interface AnalysisProgress {
 
 export interface RunAnalysisResult {
   plan: MigrationPlan;
-  mcpWarnings: string[];
 }
 
 // ── Authentication types ──────────────────────────────────────────────────────
 
 export interface AuthenticationResult {
-  success: boolean;
+  connected: boolean;
   error?: string;
-  serverUrl?: string;
-  token?: string;
 }
 
 // ── Window augmentation ───────────────────────────────────────────────────────
@@ -164,8 +161,9 @@ declare global {
     electronAPI: {
       selectFolder: () => Promise<string | null>;
       scanSourceFolder: (folderPath: string) => Promise<ScanResult>;
-      authenticateSitecoreAI: () => Promise<AuthenticationResult>;
-      runAnalysis: (scopeFolder: string) => Promise<RunAnalysisResult>;
+      authenticateSitecoreAI: () => Promise<AuthenticationResult>;      runAnalysis: (scopeFolder: string) => Promise<RunAnalysisResult>;
+      applyMigration: (plan: MigrationPlan, sourceFolder: string, destinationFolder: string) => Promise<{ applied: number; errors: string[] }>;
+      onApplyProgress: (callback: (message: string) => void) => () => void;
       onAnalysisProgress: (
         callback: (progress: AnalysisProgress) => void,
       ) => () => void;
