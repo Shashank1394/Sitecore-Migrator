@@ -147,25 +147,55 @@ export interface RunAnalysisResult {
   plan: MigrationPlan;
 }
 
-// ── Authentication types ──────────────────────────────────────────────────────
+// ── SitecoreAI configuration types ──────────────────────────────────────────
+
+export interface SitecoreAIConfig {
+  cmHost: string;
+  clientId: string;
+  clientSecret: string;
+}
 
 export interface AuthenticationResult {
   connected: boolean;
   error?: string;
 }
 
-// ── Window augmentation ───────────────────────────────────────────────────────
+// ── Window augmentation ──────────────────────────────────────────────────────
 
 declare global {
   interface Window {
     electronAPI: {
       selectFolder: () => Promise<string | null>;
-      scanSourceFolder: (folderPath: string) => Promise<ScanResult>;
-      authenticateSitecoreAI: () => Promise<AuthenticationResult>;      runAnalysis: (scopeFolder: string) => Promise<RunAnalysisResult>;
-      applyMigration: (plan: MigrationPlan, sourceFolder: string, destinationFolder: string) => Promise<{ applied: number; errors: string[] }>;
-      onApplyProgress: (callback: (message: string) => void) => () => void;
+
+      scanSourceFolder: (
+        folderPath: string,
+      ) => Promise<ScanResult>;
+
+      configureSitecoreAI: (
+        config: SitecoreAIConfig,
+      ) => Promise<AuthenticationResult>;
+
+      runAnalysis: (
+        scopeFolder: string,
+      ) => Promise<RunAnalysisResult>;
+
+      applyMigration: (
+        plan: MigrationPlan,
+        sourceFolder: string,
+        destinationFolder: string,
+      ) => Promise<{
+        applied: number;
+        errors: string[];
+      }>;
+
+      onApplyProgress: (
+        callback: (message: string) => void,
+      ) => () => void;
+
       onAnalysisProgress: (
-        callback: (progress: AnalysisProgress) => void,
+        callback: (
+          progress: AnalysisProgress,
+        ) => void,
       ) => () => void;
     };
   }

@@ -134,11 +134,12 @@ interface RunAnalysisResult {
   plan: MigrationPlan;
 }
 
-interface McpConnectionStatus {
-  xpConnected: boolean;
-  sitecoreAiConnected: boolean;
-  warnings: string[];
-  errors: string[];
+// ── SitecoreAI types ──────────────────────────────────────────────────────────
+
+interface SitecoreAIConfig {
+  cmHost: string;
+  clientId: string;
+  clientSecret: string;
 }
 
 interface AuthenticationResult {
@@ -153,32 +154,75 @@ contextBridge.exposeInMainWorld("electronAPI", {
   selectFolder: (): Promise<string | null> =>
     ipcRenderer.invoke("select-folder"),
 
-  // Source folder tree scan (Step 2)
-  scanSourceFolder: (folderPath: string): Promise<ScanResult> =>
-    ipcRenderer.invoke("scan-source-folder", folderPath),
+  // Source folder tree scan
+  scanSourceFolder: (
+    folderPath: string,
+  ): Promise<ScanResult> =>
+    ipcRenderer.invoke(
+      "scan-source-folder",
+      folderPath,
+    ),
 
-  // SitecoreAI Authentication (Step 4)
-  authenticateSitecoreAI: (): Promise<AuthenticationResult> =>
-    ipcRenderer.invoke("authenticate-sitecoreai"),
+  // SitecoreAI Configuration (Step 4)
+  configureSitecoreAI: (
+    config: SitecoreAIConfig,
+  ): Promise<AuthenticationResult> =>
+    ipcRenderer.invoke(
+      "configure-sitecoreai",
+      config,
+    ),
 
-  // Analysis & plan (Step 5)
-  runAnalysis: (scopeFolder: string): Promise<RunAnalysisResult> =>
-    ipcRenderer.invoke("run-analysis", scopeFolder),
+  // Analysis & plan
+  runAnalysis: (
+    scopeFolder: string,
+  ): Promise<RunAnalysisResult> =>
+    ipcRenderer.invoke(
+      "run-analysis",
+      scopeFolder,
+    ),
 
-  // Apply approved plan (copy source to destination and write YAML files)
-  applyMigration: (plan: MigrationPlan, sourceFolder: string, destinationFolder: string): Promise<{ applied: number; errors: string[] }> =>
-    ipcRenderer.invoke("apply-migration", plan, sourceFolder, destinationFolder),
+  // Apply approved plan
+  applyMigration: (
+    plan: MigrationPlan,
+    sourceFolder: string,
+    destinationFolder: string,
+  ): Promise<{
+    applied: number;
+    errors: string[];
+  }> =>
+    ipcRenderer.invoke(
+      "apply-migration",
+      plan,
+      sourceFolder,
+      destinationFolder,
+    ),
 
-  onApplyProgress: (callback: (message: string) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, message: string) => {
+  onApplyProgress: (
+    callback: (message: string) => void,
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      message: string,
+    ) => {
       callback(message);
     };
-    ipcRenderer.on("apply-progress", listener);
-    return () => ipcRenderer.removeListener("apply-progress", listener);
+
+    ipcRenderer.on(
+      "apply-progress",
+      listener,
+    );
+
+    return () =>
+      ipcRenderer.removeListener(
+        "apply-progress",
+        listener,
+      );
   },
 
   onAnalysisProgress: (
-    callback: (progress: AnalysisProgress) => void,
+    callback: (
+      progress: AnalysisProgress,
+    ) => void,
   ): (() => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,
@@ -187,9 +231,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       callback(progress);
     };
 
-    ipcRenderer.on("analysis-progress", listener);
+    ipcRenderer.on(
+      "analysis-progress",
+      listener,
+    );
 
-    return () => ipcRenderer.removeListener("analysis-progress", listener);
+    return () =>
+      ipcRenderer.removeListener(
+        "analysis-progress",
+        listener,
+      );
   },
 });
-

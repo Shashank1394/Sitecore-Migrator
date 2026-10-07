@@ -296,95 +296,179 @@ function ScopeSelectPage({
   );
 }
 
-// ── Page 4: SitecoreAI Authentication ─────────────────────────────────────────
+// ── Page 4: SitecoreAI Configuration ─────────────────────────────────────────
 
-interface SitecoreAIAuthState {
-  authenticated: boolean;
-  authenticating: boolean;
+interface SitecoreAIConfigState {
+  cmHost: string;
+  clientId: string;
+  clientSecret: string;
+  connecting: boolean;
   error: string;
+  connected: boolean;
 }
 
-function SitecoreAIAuthPage({
-  authState,
-  onAuthenticate,
+function SitecoreAIConfigPage({
+  config,
+  onChange,
+  onConnect,
   onBack,
-  onContinue,
 }: {
-  authState: SitecoreAIAuthState;
-  onAuthenticate: () => void;
+  config: SitecoreAIConfigState;
+  onChange: (
+    field: "cmHost" | "clientId" | "clientSecret",
+    value: string,
+  ) => void;
+  onConnect: () => void;
   onBack: () => void;
-  onContinue: () => void;
 }) {
+  const canConnect =
+    config.cmHost.trim() !== "" &&
+    config.clientId.trim() !== "" &&
+    config.clientSecret.trim() !== "" &&
+    !config.connecting;
+
   return (
     <section className="content">
       <div className="card sitecoreai-auth-card">
         <div className="card-header">
           <span className="step">04</span>
           <div>
-            <h2>SitecoreAI Authentication</h2>
-            <p>Connect to SitecoreAI MCP server to enable AI-powered template discovery</p>
+            <h2>SitecoreAI Configuration</h2>
+            <p>
+              Enter your SitecoreAI CM host and Environment Automation Client
+              credentials.
+            </p>
           </div>
         </div>
 
         <div className="auth-container">
-          {!authState.authenticated && !authState.authenticating && (
-            <div className="auth-prompt">
-              <div className="auth-icon">🔐</div>
-              <h3>SitecoreAI Authentication</h3>
-              <p className="auth-description">
-                When you connect, a browser window will open automatically for you to sign in to your SitecoreAI account.
-                The authentication is handled securely by the Marketer MCP server.
+          <div className="sitecoreai-config-form">
+            <div className="sitecoreai-config-info">
+              <h3>SitecoreAI API Credentials</h3>
+
+              <p>
+                Create an Environment Automation Client from:
               </p>
-              <button
-                type="button"
-                className="primary-button auth-button"
-                onClick={onAuthenticate}
-              >
-                Connect to SitecoreAI
-              </button>
-            </div>
-          )}
 
-          {authState.authenticating && (
-            <div className="auth-loading">
-              <span className="scan-spinner" />
-              <p>Preparing SitecoreAI MCP connection...</p>
-              <p className="auth-hint">A browser window will open for authentication if needed</p>
+              <strong>
+                SitecoreAI Portal → Organization → API keys → Automation clients
+              </strong>
             </div>
-          )}
 
-          {authState.authenticated && (
-            <div className="auth-success">
-              <div className="auth-success-icon">✓</div>
-              <h3>Connected to SitecoreAI</h3>
-              <p className="auth-ready">Ready to analyze templates</p>
-            </div>
-          )}
+            {/* CM Host */}
+            <div className="field">
+              <label htmlFor="sitecore-ai-cm-host">
+                SITECORE_AI_CM_HOST
+              </label>
 
-          {authState.error && (
-            <div className="auth-error">
-              <div className="auth-error-icon">✕</div>
-              <p className="auth-error-message">{authState.error}</p>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={onAuthenticate}
-              >
-                Try Again
-              </button>
+              <input
+                id="sitecore-ai-cm-host"
+                type="text"
+                value={config.cmHost}
+                onChange={(e) =>
+                  onChange("cmHost", e.target.value)
+                }
+                placeholder="https://your-instance.sitecorecloud.io"
+                autoComplete="off"
+              />
+
+              <span className="field-hint">
+                Your SitecoreAI CM instance host.
+              </span>
             </div>
-          )}
+
+            {/* Client ID */}
+            <div className="field">
+              <label htmlFor="sitecore-ai-client-id">
+                SITECORE_AI_CLIENT_ID
+              </label>
+
+              <input
+                id="sitecore-ai-client-id"
+                type="text"
+                value={config.clientId}
+                onChange={(e) =>
+                  onChange("clientId", e.target.value)
+                }
+                placeholder="your-client-id"
+                autoComplete="off"
+              />
+            </div>
+
+            {/* Client Secret */}
+            <div className="field">
+              <label htmlFor="sitecore-ai-client-secret">
+                SITECORE_AI_CLIENT_SECRET
+              </label>
+
+              <input
+                id="sitecore-ai-client-secret"
+                type="password"
+                value={config.clientSecret}
+                onChange={(e) =>
+                  onChange("clientSecret", e.target.value)
+                }
+                placeholder="your-client-secret"
+                autoComplete="off"
+              />
+
+              <span className="field-hint">
+                Your Environment Automation Client secret.
+              </span>
+            </div>
+
+            {/* Connecting */}
+            {config.connecting && (
+              <div className="auth-loading">
+                <span className="scan-spinner" />
+                <p>Connecting to SitecoreAI...</p>
+              </div>
+            )}
+
+            {/* Connected */}
+            {config.connected && !config.connecting && (
+              <div className="auth-success">
+                <div className="auth-success-icon">✓</div>
+                <h3>Connected to SitecoreAI</h3>
+                <p className="auth-ready">
+                  Connection successful. Ready to analyze templates.
+                </p>
+              </div>
+            )}
+
+            {/* Error */}
+            {config.error && (
+              <div className="auth-error">
+                <div className="auth-error-icon">✕</div>
+                <p className="auth-error-message">
+                  {config.error}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="actions actions-spaced">
-          <button type="button" className="secondary-button" onClick={onBack}>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onBack}
+            disabled={config.connecting}
+          >
             ← Back
           </button>
-          {authState.authenticated && (
-            <button type="button" className="primary-button" onClick={onContinue}>
-              Analyze with AI <span>→</span>
-            </button>
-          )}
+
+          <button
+            type="button"
+            className="primary-button"
+            disabled={!canConnect}
+            onClick={onConnect}
+          >
+            {config.connecting
+              ? "Connecting..."
+              : "Connect & Continue"}{" "}
+            {!config.connecting && <span>→</span>}
+          </button>
         </div>
       </div>
     </section>
@@ -443,8 +527,8 @@ function AnalysisPage({
   const pct =
     progress && progress.totalCases > 0
       ? Math.round(
-          (progress.completedCases / progress.totalCases) * 100,
-        )
+        (progress.completedCases / progress.totalCases) * 100,
+      )
       : 0;
 
   const selectedFolderName =
@@ -526,17 +610,15 @@ function AnalysisPage({
 
             <div className="inv-progress-bar-track">
               <div
-                className={`inv-progress-bar-fill ${
-                  running
+                className={`inv-progress-bar-fill ${running
                     ? "inv-progress-bar-fill--animated"
                     : ""
-                }`}
+                  }`}
                 style={{
-                  width: `${
-                    running && progress.totalCases === 0
+                  width: `${running && progress.totalCases === 0
                       ? 5
                       : pct
-                  }%`,
+                    }%`,
                 }}
               />
             </div>
@@ -591,11 +673,10 @@ function AnalysisPage({
               {plan.cases.map((c) => (
                 <div
                   key={c.caseId}
-                  className={`case-card ${
-                    c.status === "failed"
+                  className={`case-card ${c.status === "failed"
                       ? "case-card--failed"
                       : ""
-                  }`}
+                    }`}
                 >
                   <div className="case-card-header">
                     <span className="case-name">
@@ -665,20 +746,19 @@ function AnalysisPage({
                             className="inv-error-row"
                           >
                             <span
-                              className={`inv-error-path ${
-                                ex.severity === "error"
+                              className={`inv-error-path ${ex.severity === "error"
                                   ? "sev-error"
                                   : "sev-warn"
-                              }`}
+                                }`}
                             >
                               {ex.severity === "error"
                                 ? "✕"
                                 : "⚠"}{" "}
                               {ex.filePath
                                 ? shortPath(
-                                    ex.filePath,
-                                    sourceFolder,
-                                  )
+                                  ex.filePath,
+                                  sourceFolder,
+                                )
                                 : "—"}
                             </span>
 
@@ -954,20 +1034,19 @@ function ReviewPage({
                       className="inv-error-row"
                     >
                       <span
-                        className={`inv-error-path ${
-                          ex.severity === "error"
+                        className={`inv-error-path ${ex.severity === "error"
                             ? "sev-error"
                             : "sev-warn"
-                        }`}
+                          }`}
                       >
                         {ex.severity === "error"
                           ? "✕"
                           : "⚠"}{" "}
                         {ex.filePath
                           ? shortPath(
-                              ex.filePath,
-                              sourceFolder,
-                            )
+                            ex.filePath,
+                            sourceFolder,
+                          )
                           : "—"}
                       </span>
 
@@ -1050,13 +1129,19 @@ function ReviewPage({
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-type Page = "folders" | "scan" | "scope-select" | "sitecoreai-auth" | "analysis" | "review";
+type Page =
+  | "folders"
+  | "scan"
+  | "scope-select"
+  | "sitecoreai-config"
+  | "analysis"
+  | "review";
 
 const STEPS: { key: Page; label: string }[] = [
   { key: "folders", label: "01 Folders" },
   { key: "scan", label: "02 Source Files" },
   { key: "scope-select", label: "03 Migration Scope" },
-  { key: "sitecoreai-auth", label: "04 SitecoreAI Auth" },
+  { key: "sitecoreai-config", label: "04 SitecoreAI" },
   { key: "analysis", label: "05 Analyze & Plan" },
   { key: "review", label: "06 Review & Approve" },
 ];
@@ -1077,17 +1162,16 @@ export default function App() {
   // Step 3 — scope selection
   const [selectedScope, setSelectedScope] = useState<string | null>(null);
 
-  // Step 4 — SitecoreAI authentication
-  const [sitecoreAIAuth, setSitecoreAIAuth] = useState<{
-    authenticated: boolean;
-    authenticating: boolean;
-    error: string;
-    serverUrl?: string;
-  }>({
-    authenticated: false,
-    authenticating: false,
-    error: "",
-  });
+  // Step 4 — SitecoreAI configuration
+  const [sitecoreAIConfig, setSitecoreAIConfig] =
+    useState<SitecoreAIConfigState>({
+      cmHost: "",
+      clientId: "",
+      clientSecret: "",
+      connecting: false,
+      error: "",
+      connected: false,
+    });
 
   // Step 5 — analysis
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
@@ -1133,66 +1217,136 @@ export default function App() {
     setPage("scope-select");
   }
 
-  async function handleScopeContinue(scopeFolder: string) {
-    console.log("🔍 Scope Continue - Setting selectedScope to:", scopeFolder);
+  async function handleScopeContinue(
+    scopeFolder: string,
+  ) {
+    console.log(
+      "🔍 Scope Continue - Setting selectedScope to:",
+      scopeFolder,
+    );
+
     setSelectedScope(scopeFolder);
-    setSitecoreAIAuth({
-      authenticated: false,
-      authenticating: false,
+
+    setSitecoreAIConfig((prev) => ({
+      ...prev,
+      connecting: false,
       error: "",
-    });
-    setPage("sitecoreai-auth");
+      connected: false,
+    }));
+
+    setPage("sitecoreai-config");
   }
 
-  async function handleAuthenticateSitecoreAI() {
-    setSitecoreAIAuth((prev) => ({ ...prev, authenticating: true, error: "" }));
+  function handleSitecoreAIConfigChange(
+    field:
+      | "cmHost"
+      | "clientId"
+      | "clientSecret",
+    value: string,
+  ) {
+    setSitecoreAIConfig((prev) => ({
+      ...prev,
+      [field]: value,
+      error: "",
+      connected: false,
+    }));
+  }
+
+  async function handleConnectSitecoreAI() {
+    if (
+      !sitecoreAIConfig.cmHost.trim() ||
+      !sitecoreAIConfig.clientId.trim() ||
+      !sitecoreAIConfig.clientSecret
+    ) {
+      setSitecoreAIConfig((prev) => ({
+        ...prev,
+        error:
+          "Please provide all three SitecoreAI values.",
+      }));
+
+      return;
+    }
+
+    setSitecoreAIConfig((prev) => ({
+      ...prev,
+      connecting: true,
+      error: "",
+      connected: false,
+    }));
+
     try {
-      const result = await window.electronAPI.authenticateSitecoreAI();
-      setSitecoreAIAuth({
-        authenticated: result.connected,
-        authenticating: false,
-        error: result.connected ? "" : (result.error || "Connection failed"),
-      });
+      const result =
+        await window.electronAPI.configureSitecoreAI({
+          cmHost:
+            sitecoreAIConfig.cmHost.trim(),
+          clientId:
+            sitecoreAIConfig.clientId.trim(),
+          clientSecret:
+            sitecoreAIConfig.clientSecret,
+        });
+
+      if (!result.connected) {
+        throw new Error(
+          result.error ||
+          "Unable to connect to SitecoreAI.",
+        );
+      }
+
+      setSitecoreAIConfig((prev) => ({
+        ...prev,
+        connecting: false,
+        connected: true,
+        error: "",
+      }));
+
+      await handleAuthContinue();
     } catch (err) {
-      setSitecoreAIAuth({
-        authenticated: false,
-        authenticating: false,
-        error: err instanceof Error ? err.message : "Authentication failed",
-      });
+      setSitecoreAIConfig((prev) => ({
+        ...prev,
+        connecting: false,
+        connected: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Unable to connect to SitecoreAI.",
+      }));
     }
   }
 
   async function handleAuthContinue() {
-    if (!selectedScope) {
-      setAnalysisError("Please select a migration folder before continuing.");
-      return;
-    }
-
     setAnalysisProgress(null);
     setMigrationPlan(null);
     setAnalysisError("");
 
     anlUnsubRef.current?.();
 
-    const unsub = window.electronAPI.onAnalysisProgress(
-      setAnalysisProgress,
-    );
+    const unsub =
+      window.electronAPI.onAnalysisProgress(
+        setAnalysisProgress,
+      );
 
     anlUnsubRef.current = unsub;
+
     setPage("analysis");
 
     try {
-      // IMPORTANT:
-      // Analysis is restricted to the folder explicitly selected
-      // by the user. Do not fall back to the parent source folder.
-      const { plan } = await window.electronAPI.runAnalysis(
-        selectedScope,
-      );
+      if (!selectedScope) {
+        throw new Error(
+          "No migration folder has been selected.",
+        );
+      }
+
+      const { plan } =
+        await window.electronAPI.runAnalysis(
+          selectedScope,
+        );
 
       setMigrationPlan(plan);
     } catch (err) {
       setAnalysisError(
-        err instanceof Error ? err.message : "Analysis failed.",
+        err instanceof Error
+          ? err.message
+          : "Analysis failed.",
       );
     } finally {
       unsub();
@@ -1257,25 +1411,40 @@ export default function App() {
       {page === "folders" && <FolderPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} pickerError={pickerError} onSelectSource={() => selectFolder(setSourceFolder)} onSelectDestination={() => selectFolder(setDestinationFolder)} onContinue={handleFoldersContinue} />}
       {page === "scan" && <ScanPage sourceFolder={sourceFolder} scanning={scanning} scanResult={scanResult} scanError={scanError} onBack={() => setPage("folders")} onContinue={handleScanContinue} />}
       {page === "scope-select" && scanResult && <ScopeSelectPage scanResult={scanResult} onBack={() => setPage("scan")} onContinue={handleScopeContinue} />}
-      {page === "sitecoreai-auth" && <SitecoreAIAuthPage authState={sitecoreAIAuth} onAuthenticate={handleAuthenticateSitecoreAI} onBack={() => setPage("scope-select")} onContinue={handleAuthContinue} />}
+      {page === "sitecoreai-config" && (
+        <SitecoreAIConfigPage
+          config={sitecoreAIConfig}
+          onChange={handleSitecoreAIConfigChange}
+          onConnect={handleConnectSitecoreAI}
+          onBack={() =>
+            setPage("scope-select")
+          }
+        />
+      )}
       {page === "analysis" && selectedScope && (
         <AnalysisPage
           sourceFolder={selectedScope}
           progress={analysisProgress}
           plan={migrationPlan}
           analysisError={analysisError}
-          onBack={() => setPage("sitecoreai-auth")}
+          onBack={() =>
+            setPage("sitecoreai-config")
+          }
           onContinue={handleAnalysisContinue}
         />
       )}
-      {page === "review" && migrationPlan && selectedScope && (
-        <ReviewPage
-          sourceFolder={selectedScope}
-          plan={migrationPlan}
-          onBack={() => setPage("analysis")}
-          onApprove={handleApprove}
-        />
-      )}
+      {page === "review" &&
+        migrationPlan &&
+        selectedScope && (
+          <ReviewPage
+            sourceFolder={selectedScope}
+            plan={migrationPlan}
+            onBack={() =>
+              setPage("analysis")
+            }
+            onApprove={handleApprove}
+          />
+        )}
     </main>
   );
 }

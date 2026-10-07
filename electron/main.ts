@@ -11,11 +11,18 @@ import { readdir, stat } from "node:fs/promises";
 import dotenv from "dotenv";
 
 import {
-  createAgentApiFromEnv,
-  type SitecoreAiAgentApi,
+  SitecoreAiAgentApi,
+  type SitecoreAiAgentApi as SitecoreAiAgentApiType,
 } from "../src/sitecoreai/agent-api.js";
-import { applyMigrationPlan } from "../src/migration/rendering-migration.js";
-import { runMigrationAnalysis } from "../src/migration/migration-runner.js";
+
+import {
+  applyMigrationPlan,
+} from "../src/migration/rendering-migration.js";
+
+import {
+  runMigrationAnalysis,
+} from "../src/migration/migration-runner.js";
+
 import type {
   MigrationPlan,
   AnalysisProgress,
@@ -28,11 +35,28 @@ const __dirname = path.dirname(__filename);
 /* Environment                                                                 */
 /* -------------------------------------------------------------------------- */
 
-const envPath = path.join(__dirname, "..", "..", ".env");
-const dotenvResult = dotenv.config({ path: envPath });
+/*
+ * .env is still loaded for things such as the OpenRouter configuration.
+ *
+ * SitecoreAI credentials are NOT taken from .env anymore.
+ * They are supplied by the user through the application UI.
+ */
+const envPath = path.join(
+  __dirname,
+  "..",
+  "..",
+  ".env",
+);
+
+const dotenvResult = dotenv.config({
+  path: envPath,
+});
 
 if (dotenvResult.error) {
-  console.warn("Could not load .env:", dotenvResult.error.message);
+  console.warn(
+    "Could not load .env:",
+    dotenvResult.error.message,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -41,12 +65,26 @@ if (dotenvResult.error) {
 
 let mainWindow: BrowserWindow | null = null;
 
-/** Lazily-created Agent API client (reused across analysis runs). */
-let agentApi: SitecoreAiAgentApi | null = null;
+/**
+ * Authenticated SitecoreAI Agent API instance.
+ *
+ * This is created when the user enters:
+ *
+ *   SITECORE_AI_CM_HOST
+ *   SITECORE_AI_CLIENT_ID
+ *   SITECORE_AI_CLIENT_SECRET
+ *
+ * and clicks "Connect & Continue".
+ *
+ * Credentials stay in memory for the current application session.
+ */
+let agentApi: SitecoreAiAgentApiType | null = null;
 
-function getAgentApi(): SitecoreAiAgentApi {
+function getAgentApi(): SitecoreAiAgentApiType {
   if (!agentApi) {
-    agentApi = createAgentApiFromEnv();
+    throw new Error(
+      "SitecoreAI is not configured. Please enter the SitecoreAI connection details first.",
+    );
   }
 
   return agentApi;
@@ -57,7 +95,10 @@ function getAgentApi(): SitecoreAiAgentApi {
 /* -------------------------------------------------------------------------- */
 
 function createWindow(): void {
-  const preloadPath = path.join(__dirname, "preload.cjs");
+  const preloadPath = path.join(
+    __dirname,
+    "preload.cjs",
+  );
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -65,6 +106,7 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 700,
     title: "Sitecore Migration Workbench",
+
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -74,10 +116,15 @@ function createWindow(): void {
 
   if (app.isPackaged) {
     void mainWindow.loadFile(
-      path.join(__dirname, "../renderer/index.html"),
+      path.join(
+        __dirname,
+        "../renderer/index.html",
+      ),
     );
   } else {
-    void mainWindow.loadURL("http://localhost:5173");
+    void mainWindow.loadURL(
+      "http://localhost:5173",
+    );
   }
 
   mainWindow.on("closed", () => {
@@ -89,22 +136,34 @@ function createWindow(): void {
 /* Folder picker                                                               */
 /* -------------------------------------------------------------------------- */
 
-ipcMain.handle("select-folder", async (event) => {
-  const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+ipcMain.handle(
+  "select-folder",
+  async (event) => {
+    const ownerWindow =
+      BrowserWindow.fromWebContents(
+        event.sender,
+      );
 
-  const options: OpenDialogOptions = {
-    title: "Select Folder",
-    properties: ["openDirectory"],
-  };
+    const options: OpenDialogOptions = {
+      title: "Select Folder",
+      properties: ["openDirectory"],
+    };
 
-  const result = ownerWindow
-    ? await dialog.showOpenDialog(ownerWindow, options)
-    : await dialog.showOpenDialog(options);
+    const result = ownerWindow
+      ? await dialog.showOpenDialog(
+          ownerWindow,
+          options,
+        )
+      : await dialog.showOpenDialog(
+          options,
+        );
 
-  return result.canceled || result.filePaths.length === 0
-    ? null
-    : result.filePaths[0];
-});
+    return result.canceled ||
+      result.filePaths.length === 0
+      ? null
+      : result.filePaths[0];
+  },
+);
 
 /* -------------------------------------------------------------------------- */
 /* Source folder scanning                                                      */
@@ -125,17 +184,22 @@ export interface ScanResult {
 async function buildTree(
   directory: string,
 ): Promise<FolderNode[]> {
-  const entries = await readdir(directory, {
-    withFileTypes: true,
-  });
+  const entries =
+    await readdir(directory, {
+      withFileTypes: true,
+    });
 
   const nodes: FolderNode[] = [];
 
   for (const entry of entries) {
-    const fullPath = path.join(directory, entry.name);
+    const fullPath = path.join(
+      directory,
+      entry.name,
+    );
 
     if (entry.isDirectory()) {
-      const children = await buildTree(fullPath);
+      const children =
+        await buildTree(fullPath);
 
       if (containsYaml(children)) {
         nodes.push({
@@ -160,21 +224,29 @@ async function buildTree(
   return nodes;
 }
 
-function containsYaml(nodes: FolderNode[]): boolean {
+function containsYaml(
+  nodes: FolderNode[],
+): boolean {
   return nodes.some(
-    (n) =>
-      n.type === "file" ||
-      (n.children ? containsYaml(n.children) : false),
+    (node) =>
+      node.type === "file" ||
+      (node.children
+        ? containsYaml(node.children)
+        : false),
   );
 }
 
-function countFiles(nodes: FolderNode[]): number {
+function countFiles(
+  nodes: FolderNode[],
+): number {
   return nodes.reduce(
-    (sum, n) =>
+    (sum, node) =>
       sum +
-      (n.type === "file"
+      (node.type === "file"
         ? 1
-        : countFiles(n.children ?? [])),
+        : countFiles(
+            node.children ?? [],
+          )),
     0,
   );
 }
@@ -185,13 +257,17 @@ ipcMain.handle(
     _event,
     folderPath: string,
   ): Promise<ScanResult> => {
-    const s = await stat(folderPath);
+    const sourceStats =
+      await stat(folderPath);
 
-    if (!s.isDirectory()) {
-      throw new Error(`Not a directory: ${folderPath}`);
+    if (!sourceStats.isDirectory()) {
+      throw new Error(
+        `Not a directory: ${folderPath}`,
+      );
     }
 
-    const tree = await buildTree(folderPath);
+    const tree =
+      await buildTree(folderPath);
 
     return {
       totalFiles: countFiles(tree),
@@ -201,7 +277,7 @@ ipcMain.handle(
 );
 
 /* -------------------------------------------------------------------------- */
-/* SitecoreAI connection check                                                 */
+/* SitecoreAI configuration                                                    */
 /* -------------------------------------------------------------------------- */
 
 export interface SitecoreAiConnectionStatus {
@@ -209,25 +285,90 @@ export interface SitecoreAiConnectionStatus {
   error?: string;
 }
 
-ipcMain.handle(
-  "authenticate-sitecoreai",
-  async (): Promise<SitecoreAiConnectionStatus> => {
-    try {
-      // Validate credentials by attempting a token request
-      const api = getAgentApi();
+interface SitecoreAIConfig {
+  cmHost: string;
+  clientId: string;
+  clientSecret: string;
+}
 
-      // Do a lightweight search to confirm the connection works
-      await api.searchByName("__never__");
+ipcMain.handle(
+  "configure-sitecoreai",
+  async (
+    _event,
+    config: SitecoreAIConfig,
+  ): Promise<SitecoreAiConnectionStatus> => {
+    try {
+      const cmHost =
+        config?.cmHost?.trim();
+
+      const clientId =
+        config?.clientId?.trim();
+
+      const clientSecret =
+        config?.clientSecret;
+
+      if (!cmHost) {
+        throw new Error(
+          "SITECORE_AI_CM_HOST is required.",
+        );
+      }
+
+      if (!clientId) {
+        throw new Error(
+          "SITECORE_AI_CLIENT_ID is required.",
+        );
+      }
+
+      if (!clientSecret) {
+        throw new Error(
+          "SITECORE_AI_CLIENT_SECRET is required.",
+        );
+      }
+
+      /*
+       * Create the Agent API with the credentials
+       * provided by the user.
+       */
+      const api =
+        new SitecoreAiAgentApi({
+          cmHost,
+          clientId,
+          clientSecret,
+        });
+
+      /*
+       * Lightweight connection test.
+       *
+       * searchByName() returning zero results is fine.
+       * We only care that authentication + GraphQL
+       * execution succeeds without throwing.
+       */
+      await api.searchByName(
+        "__sitecore_migrator_connection_test__",
+        1,
+      );
+
+      /*
+       * Store the authenticated API instance in memory.
+       */
+      agentApi = api;
 
       return {
         connected: true,
       };
     } catch (err) {
+      /*
+       * Do not retain a failed connection.
+       */
+      agentApi = null;
+
       const message =
-        err instanceof Error ? err.message : String(err);
+        err instanceof Error
+          ? err.message
+          : String(err);
 
       console.error(
-        "SitecoreAI connection failed:",
+        "SitecoreAI configuration failed:",
         message,
       );
 
@@ -255,26 +396,42 @@ ipcMain.handle(
   ): Promise<RunAnalysisResult> => {
     const sender = event.sender;
 
-    const send = (progress: AnalysisProgress) => {
+    const send = (
+      progress: AnalysisProgress,
+    ) => {
       if (!sender.isDestroyed()) {
-        sender.send("analysis-progress", progress);
+        sender.send(
+          "analysis-progress",
+          progress,
+        );
       }
     };
 
     send({
       status: "starting",
-      message: "Connecting to SitecoreAI...",
+      message:
+        "Starting AI-powered rendering analysis...",
       completedCases: 0,
       totalCases: 1,
     });
 
+    /*
+     * This will throw a clear error if the user
+     * somehow reaches analysis without configuring
+     * SitecoreAI first.
+     */
     const api = getAgentApi();
 
-    const plan = await runMigrationAnalysis(
-      scopeFolder,
-      api,
-      send,
-    );
+    /*
+     * IMPORTANT:
+     * Only the selected migration folder is passed here.
+     */
+    const plan =
+      await runMigrationAnalysis(
+        scopeFolder,
+        api,
+        send,
+      );
 
     return {
       plan,
@@ -293,18 +450,25 @@ ipcMain.handle(
     plan: MigrationPlan,
     sourceFolder: string,
     destinationFolder: string,
-  ): Promise<{ applied: number; errors: string[] }> => {
+  ): Promise<{
+    applied: number;
+    errors: string[];
+  }> => {
     const sender = event.sender;
 
     return applyMigrationPlan(
       plan,
       {
         sourceRoot: sourceFolder,
-        destinationRoot: destinationFolder,
+        destinationRoot:
+          destinationFolder,
       },
       (message) => {
         if (!sender.isDestroyed()) {
-          sender.send("apply-progress", message);
+          sender.send(
+            "apply-progress",
+            message,
+          );
         }
       },
     );
@@ -320,7 +484,8 @@ app.whenReady().then(() => {
 
   app.on("activate", () => {
     if (
-      BrowserWindow.getAllWindows().length === 0
+      BrowserWindow.getAllWindows()
+        .length === 0
     ) {
       createWindow();
     }
@@ -328,7 +493,9 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  if (
+    process.platform !== "darwin"
+  ) {
     app.quit();
   }
 });
