@@ -1,23 +1,17 @@
 /**
- * LLM-driven template GUID finder.
+ * Uses an LLM with SitecoreAI Agent API tools to discover:
  *
- * The LLM is given two tools backed by the SitecoreAI Authoring API:
- *   • search_by_name(name)    – search items by exact name
- *   • get_item_by_id(itemId)  – look up an item by GUID
+ *   Controller Rendering template ID
+ *              ↓
+ *        Json Rendering template ID
  *
- * It is asked to:
- *   1. Look up each GUID from the source YAML files until it finds "Controller Rendering"
- *   2. Search for "Json Rendering" by name
- *   3. Return both GUIDs
- *
- * This keeps all decision logic in the LLM while the API calls stay deterministic.
+ * The LLM never invents GUIDs.
+ * Every GUID must come from an Agent API response.
  */
 
 import type { SitecoreAiAgentApi } from "./agent-api.js";
 import type { ProgressCallback } from "../migration/rendering-migration.js";
 import type { TemplateMap } from "../migration/rendering-migration.js";
-
-// ── OpenRouter tool-calling types ─────────────────────────────────────────────
 
 interface ToolDefinition {
   type: "function";
@@ -31,7 +25,10 @@ interface ToolDefinition {
 interface ToolCall {
   id: string;
   type: "function";
-  function: { name: string; arguments: string };
+  function: {
+    name: string;
+    arguments: string;
+  };
 }
 
 interface Message {
@@ -52,23 +49,26 @@ interface ChatResponse {
   }>;
 }
 
-// ── Tool definitions exposed to the LLM ──────────────────────────────────────
+/* -------------------------------------------------------------------------- */
+/* Tools exposed to the LLM                                                   */
+/* -------------------------------------------------------------------------- */
 
 const TOOLS: ToolDefinition[] = [
   {
     type: "function",
     function: {
-      name: "search_by_name",
+      name: "get_item_by_id",
       description:
-        "Search for Sitecore items in the SitecoreAI instance by their exact item name. " +
-        "Returns a list of matches with itemId, name, and path.",
+        "Look up a SitecoreAI item by its GUID. " +
+        "Returns the real itemId, name and path. " +
+        "Use this to identify what a source template GUID represents.",
       parameters: {
         type: "object",
-        required: ["name"],
+        required: ["itemId"],
         properties: {
-          name: {
+          itemId: {
             type: "string",
-            description: "The exact item name to search for, e.g. 'Json Rendering'",
+            description: "Sitecore item GUID.",
           },
         },
       },
@@ -77,17 +77,17 @@ const TOOLS: ToolDefinition[] = [
   {
     type: "function",
     function: {
-      name: "get_item_by_id",
+      name: "search_by_name",
       description:
-        "Get a Sitecore item from the SitecoreAI instance by its GUID. " +
-        "Returns itemId, name, and path, or null if not found.",
+        "Search SitecoreAI for items by exact item name. " +
+        "Returns itemId, name and path for matching items.",
       parameters: {
         type: "object",
-        required: ["itemId"],
+        required: ["name"],
         properties: {
-          itemId: {
+          name: {
             type: "string",
-            description: "The item GUID, e.g. '2a3e91a0-7987-44b5-ab34-35c2d9de83b9'",
+            description: "Exact Sitecore item name.",
           },
         },
       },
@@ -95,35 +95,57 @@ const TOOLS: ToolDefinition[] = [
   },
 ];
 
-// ── LLM call ──────────────────────────────────────────────────────────────────
+/* -------------------------------------------------------------------------- */
+/* OpenRouter                                                                  */
+/* -------------------------------------------------------------------------- */
 
 async function callOpenRouter(
   messages: Message[],
-  tools: ToolDefinition[],
 ): Promise<ChatResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  const model  = process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini";
+  const model =
+    process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini";
 
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set in .env");
-
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type":  "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ model, messages, tools, tool_choice: "auto" }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`OpenRouter API error (${res.status}): ${text.slice(0, 300)}`);
+  if (!apiKey) {
+    throw new Error(
+      "OPENROUTER_API_KEY is not set in .env",
+    );
   }
 
-  return res.json() as Promise<ChatResponse>;
+  const response = await fetch(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        tools: TOOLS,
+        tool_choice: "auto",
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+
+    throw new Error(
+      `OpenRouter API error (${response.status}): ${text.slice(
+        0,
+        500,
+      )}`,
+    );
+  }
+
+  return (await response.json()) as ChatResponse;
 }
 
-// ── Tool execution ────────────────────────────────────────────────────────────
+/* -------------------------------------------------------------------------- */
+/* Agent API tool execution                                                    */
+/* -------------------------------------------------------------------------- */
 
 async function executeTool(
   name: string,
@@ -131,175 +153,366 @@ async function executeTool(
   api: SitecoreAiAgentApi,
 ): Promise<string> {
   let args: Record<string, unknown>;
+
   try {
     args = JSON.parse(argsJson) as Record<string, unknown>;
   } catch {
-    return JSON.stringify({ error: "Invalid JSON arguments" });
+    return JSON.stringify({
+      error: "Tool arguments were not valid JSON.",
+    });
   }
 
   try {
-    if (name === "search_by_name") {
-      const results = await api.searchByName(String(args.name ?? ""));
-      return JSON.stringify(results.length > 0 ? results : { message: "No items found" });
-    }
+    switch (name) {
+      case "get_item_by_id": {
+        const itemId = String(args.itemId ?? "").trim();
 
-    if (name === "get_item_by_id") {
-      const item = await api.getItemById(String(args.itemId ?? ""));
-      return JSON.stringify(item ?? { message: "Item not found" });
-    }
+        if (!itemId) {
+          return JSON.stringify({
+            error: "itemId is required.",
+          });
+        }
 
-    return JSON.stringify({ error: `Unknown tool: ${name}` });
-  } catch (err) {
-    return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+        const item = await api.getItemById(itemId);
+
+        if (!item) {
+          return JSON.stringify({
+            message: "Item not found.",
+            itemId,
+          });
+        }
+
+        return JSON.stringify(item);
+      }
+
+      case "search_by_name": {
+        const name = String(args.name ?? "").trim();
+
+        if (!name) {
+          return JSON.stringify({
+            error: "name is required.",
+          });
+        }
+
+        const results = await api.searchByName(name);
+
+        return JSON.stringify({
+          results,
+        });
+      }
+
+      default:
+        return JSON.stringify({
+          error: `Unknown tool: ${name}`,
+        });
+    }
+  } catch (error) {
+    return JSON.stringify({
+      error:
+        error instanceof Error
+          ? error.message
+          : String(error),
+    });
   }
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+/* -------------------------------------------------------------------------- */
+/* Main                                                                        */
+/* -------------------------------------------------------------------------- */
 
-/**
- * Uses an LLM to identify Controller Rendering and Json Rendering GUIDs
- * via the SitecoreAI Authoring API tools.
- */
 export async function findTemplatesWithLlm(
   api: SitecoreAiAgentApi,
   candidateGuids: string[],
   onProgress: ProgressCallback,
 ): Promise<TemplateMap> {
+  if (candidateGuids.length === 0) {
+    throw new Error(
+      "No template IDs were found in the selected rendering folder.",
+    );
+  }
 
-  const guidList = candidateGuids
-    .map((g, i) => `${i + 1}. ${g.replace(/[{}]/g, "").toLowerCase()}`)
+  const normalizedGuids = [
+    ...new Set(
+      candidateGuids.map((guid) =>
+        normalizeGuid(guid),
+      ),
+    ),
+  ];
+
+  const guidList = normalizedGuids
+    .map((guid, index) => `${index + 1}. ${guid}`)
     .join("\n");
 
   const messages: Message[] = [
     {
       role: "system",
-      content: [
-        "You are a Sitecore migration assistant.",
-        "You have two tools to query a live SitecoreAI instance:",
-        "  • search_by_name(name) — search by exact item name",
-        "  • get_item_by_id(itemId) — look up an item by GUID",
-        "Use the tools to find template GUIDs. Never invent or guess GUIDs.",
-        "Return your final answer as a JSON object only, with no surrounding text.",
-      ].join("\n"),
+      content: `
+You are assisting with a Sitecore XP → SitecoreAI rendering migration.
+
+You have access to SitecoreAI through these tools:
+
+1. get_item_by_id(itemId)
+   - Looks up a SitecoreAI item by GUID.
+
+2. search_by_name(name)
+   - Searches SitecoreAI using the exact item name.
+
+Rules:
+
+- Never invent or guess a GUID.
+- Every GUID you return must come directly from a tool response.
+- You must inspect the candidate GUIDs using get_item_by_id().
+- You are looking specifically for an item whose exact name is:
+  "Controller Rendering"
+- Once Controller Rendering is identified, search SitecoreAI for:
+  "Json Rendering"
+- Use the actual itemId returned by SitecoreAI.
+- Do not use a GUID from the source YAML as the Json Rendering ID unless
+  the Agent API explicitly returned that same GUID.
+- Do not modify files.
+- Do not perform the migration yourself.
+- Your only task is to discover the two template IDs.
+
+At the end, return ONLY valid JSON.
+      `.trim(),
     },
     {
       role: "user",
       content: `
-You need to find two Sitecore template GUIDs.
+The following template GUIDs were extracted ONLY from the currently
+selected EC-Renderings folder.
 
-## Task 1 — Find Controller Rendering
-The following GUIDs were found in Sitecore XP YAML files under /sitecore/layout/Renderings.
-Use get_item_by_id() to look up each one until you find the item named "Controller Rendering".
+You must investigate these GUIDs:
 
-GUIDs to check:
 ${guidList}
 
-## Task 2 — Find Json Rendering
-Use search_by_name("Json Rendering") to find the Json Rendering template in SitecoreAI.
+Task 1:
+Use get_item_by_id() on these GUIDs to determine which one represents
+the exact Sitecore item named "Controller Rendering".
 
-## Output
-When you have both GUIDs, respond with ONLY this JSON:
+Stop checking once you have identified the correct Controller Rendering item.
+
+Task 2:
+Use search_by_name("Json Rendering") to find the exact Sitecore item
+named "Json Rendering" in SitecoreAI.
+
+Task 3:
+Return the actual GUIDs returned by the tools.
+
+Required JSON format:
 
 {
-  "controllerRenderingId": "<guid from Task 1>",
+  "controllerRenderingId": "<actual itemId returned by Agent API>",
   "controllerRenderingName": "Controller Rendering",
-  "jsonRenderingId": "<guid from Task 2>",
+  "jsonRenderingId": "<actual itemId returned by Agent API>",
   "jsonRenderingName": "Json Rendering"
 }
-`.trim(),
+      `.trim(),
     },
   ];
 
   onProgress({
     status: "investigating",
-    message: "LLM is identifying templates via SitecoreAI API...",
+    message:
+      "LLM is checking rendering template IDs through SitecoreAI...",
     completedCases: 0,
     totalCases: 1,
-    investigationStep: "LLM → SitecoreAI Authoring API",
+    investigationStep:
+      "LLM → SitecoreAI Agent API",
   });
 
-  const MAX_ITERATIONS = 20;
+  const MAX_ITERATIONS = 25;
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const response = await callOpenRouter(messages, TOOLS);
+  for (
+    let iteration = 0;
+    iteration < MAX_ITERATIONS;
+    iteration++
+  ) {
+    const response =
+      await callOpenRouter(messages);
+
     const choice = response.choices[0];
 
-    if (!choice) throw new Error("OpenRouter returned no choices");
+    if (!choice) {
+      throw new Error(
+        "OpenRouter returned no choices.",
+      );
+    }
 
-    const assistantMsg = choice.message;
+    const assistantMessage = choice.message;
 
-    // Push assistant turn into history
     messages.push({
       role: "assistant",
-      content: assistantMsg.content ?? null,
-      tool_calls: assistantMsg.tool_calls,
+      content: assistantMessage.content ?? null,
+      tool_calls: assistantMessage.tool_calls,
     });
 
-    // No tool calls → final answer
-    if (!assistantMsg.tool_calls?.length) {
-      const content = assistantMsg.content ?? "";
-      console.log("[llm-template-finder] Final response:", content);
+    /*
+     * The LLM has finished reasoning and is returning
+     * the final template map.
+     */
+    if (!assistantMessage.tool_calls?.length) {
+      const content =
+        assistantMessage.content ?? "";
+
+      onProgress({
+        status: "planning",
+        message:
+          "Template mapping discovered successfully.",
+        completedCases: 0,
+        totalCases: 1,
+        investigationStep:
+          "Controller Rendering → Json Rendering",
+      });
+
       return parseTemplateMap(content);
     }
 
-    // Execute each tool call and push results
-    for (const call of assistantMsg.tool_calls) {
+    /*
+     * Execute every tool call returned by the LLM.
+     */
+    for (const toolCall of assistantMessage.tool_calls) {
       onProgress({
         status: "investigating",
-        message: `Calling ${call.function.name}(${call.function.arguments.slice(0, 60)})`,
+        message: `Calling ${toolCall.function.name}...`,
         completedCases: 0,
         totalCases: 1,
-        investigationStep: call.function.name,
+        investigationStep:
+          toolCall.function.name,
       });
 
-      const result = await executeTool(call.function.name, call.function.arguments, api);
-      console.log(`[llm-template-finder] ${call.function.name} →`, result.slice(0, 200));
+      const result = await executeTool(
+        toolCall.function.name,
+        toolCall.function.arguments,
+        api,
+      );
+
+      console.log(
+        `[llm-template-finder] ${toolCall.function.name} →`,
+        result.slice(0, 500),
+      );
 
       messages.push({
         role: "tool",
-        tool_call_id: call.id,
+        tool_call_id: toolCall.id,
         content: result,
       });
     }
   }
 
   throw new Error(
-    `LLM did not resolve template GUIDs within ${MAX_ITERATIONS} iterations.`,
+    `LLM could not resolve the rendering templates within ${MAX_ITERATIONS} iterations.`,
   );
 }
 
-// ── JSON parser ───────────────────────────────────────────────────────────────
+/* -------------------------------------------------------------------------- */
+/* Result validation                                                           */
+/* -------------------------------------------------------------------------- */
 
-function parseTemplateMap(content: string): TemplateMap {
-  // Extract the JSON object even if surrounded by text
-  const match = content.match(/\{[^{}]*"controllerRenderingId"[^{}]*\}/s);
+function parseTemplateMap(
+  content: string,
+): TemplateMap {
+  const match = content.match(
+    /\{[\s\S]*?"controllerRenderingId"[\s\S]*?\}/,
+  );
+
   if (!match) {
     throw new Error(
-      `LLM did not return a valid template map JSON.\nResponse was:\n${content.slice(0, 600)}`,
+      `LLM did not return a valid template map.\n\nResponse:\n${content.slice(
+        0,
+        1000,
+      )}`,
     );
   }
 
-  let obj: Record<string, unknown>;
+  let parsed: Record<string, unknown>;
+
   try {
-    obj = JSON.parse(match[0]) as Record<string, unknown>;
+    parsed = JSON.parse(match[0]) as Record<
+      string,
+      unknown
+    >;
   } catch {
-    throw new Error(`LLM returned malformed JSON:\n${match[0].slice(0, 300)}`);
+    throw new Error(
+      `LLM returned malformed JSON.\n\nResponse:\n${content.slice(
+        0,
+        1000,
+      )}`,
+    );
   }
 
-  for (const key of ["controllerRenderingId", "jsonRenderingId", "controllerRenderingName", "jsonRenderingName"] as const) {
-    if (typeof obj[key] !== "string" || !obj[key]) {
+  const requiredFields = [
+    "controllerRenderingId",
+    "controllerRenderingName",
+    "jsonRenderingId",
+    "jsonRenderingName",
+  ] as const;
+
+  for (const field of requiredFields) {
+    if (
+      typeof parsed[field] !== "string" ||
+      !parsed[field]
+    ) {
       throw new Error(
-        `LLM template map missing or empty field: "${key}".\nFull response:\n${content.slice(0, 600)}`,
+        `LLM response is missing "${field}".`,
       );
     }
   }
 
-  const normalise = (g: string) => `{${g.replace(/[{}]/g, "").toUpperCase()}}`;
+  if (
+    parsed.controllerRenderingName !==
+    "Controller Rendering"
+  ) {
+    throw new Error(
+      `Unexpected Controller Rendering name: ${parsed.controllerRenderingName}`,
+    );
+  }
+
+  if (
+    parsed.jsonRenderingName !==
+    "Json Rendering"
+  ) {
+    throw new Error(
+      `Unexpected Json Rendering name: ${parsed.jsonRenderingName}`,
+    );
+  }
+
+  const controllerRenderingId =
+    normalizeGuid(
+      String(parsed.controllerRenderingId),
+    );
+
+  const jsonRenderingId =
+    normalizeGuid(
+      String(parsed.jsonRenderingId),
+    );
 
   return {
-    controllerRenderingId:   normalise(String(obj.controllerRenderingId)),
-    controllerRenderingName: String(obj.controllerRenderingName),
-    jsonRenderingId:         normalise(String(obj.jsonRenderingId)),
-    jsonRenderingName:       String(obj.jsonRenderingName),
+    controllerRenderingId,
+    controllerRenderingName:
+      "Controller Rendering",
+    jsonRenderingId,
+    jsonRenderingName: "Json Rendering",
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                     */
+/* -------------------------------------------------------------------------- */
+
+function normalizeGuid(
+  value: string,
+): string {
+  const hex = value
+    .replace(/[{}-]/g, "")
+    .trim()
+    .toUpperCase();
+
+  if (!/^[0-9A-F]{32}$/.test(hex)) {
+    throw new Error(
+      `Invalid Sitecore GUID returned: ${value}`,
+    );
+  }
+
+  return `{${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}}`;
 }

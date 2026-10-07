@@ -14,14 +14,15 @@ import {
   createAgentApiFromEnv,
   type SitecoreAiAgentApi,
 } from "../src/sitecoreai/agent-api.js";
-import {
-  runRenderingMigration,
-  applyMigrationPlan,
-} from "../src/migration/rendering-migration.js";
-import type { MigrationPlan, AnalysisProgress } from "../src/migration/analysis-types.js";
+import { applyMigrationPlan } from "../src/migration/rendering-migration.js";
+import { runMigrationAnalysis } from "../src/migration/migration-runner.js";
+import type {
+  MigrationPlan,
+  AnalysisProgress,
+} from "../src/migration/analysis-types.js";
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+const __dirname = path.dirname(__filename);
 
 /* -------------------------------------------------------------------------- */
 /* Environment                                                                 */
@@ -47,6 +48,7 @@ function getAgentApi(): SitecoreAiAgentApi {
   if (!agentApi) {
     agentApi = createAgentApiFromEnv();
   }
+
   return agentApi;
 }
 
@@ -71,12 +73,16 @@ function createWindow(): void {
   });
 
   if (app.isPackaged) {
-    void mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+    void mainWindow.loadFile(
+      path.join(__dirname, "../renderer/index.html"),
+    );
   } else {
     void mainWindow.loadURL("http://localhost:5173");
   }
 
-  mainWindow.on("closed", () => { mainWindow = null; });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -85,10 +91,12 @@ function createWindow(): void {
 
 ipcMain.handle("select-folder", async (event) => {
   const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+
   const options: OpenDialogOptions = {
     title: "Select Folder",
     properties: ["openDirectory"],
   };
+
   const result = ownerWindow
     ? await dialog.showOpenDialog(ownerWindow, options)
     : await dialog.showOpenDialog(options);
@@ -114,8 +122,13 @@ export interface ScanResult {
   tree: FolderNode[];
 }
 
-async function buildTree(directory: string): Promise<FolderNode[]> {
-  const entries = await readdir(directory, { withFileTypes: true });
+async function buildTree(
+  directory: string,
+): Promise<FolderNode[]> {
+  const entries = await readdir(directory, {
+    withFileTypes: true,
+  });
+
   const nodes: FolderNode[] = [];
 
   for (const entry of entries) {
@@ -123,11 +136,24 @@ async function buildTree(directory: string): Promise<FolderNode[]> {
 
     if (entry.isDirectory()) {
       const children = await buildTree(fullPath);
+
       if (containsYaml(children)) {
-        nodes.push({ name: entry.name, fullPath, type: "folder", children });
+        nodes.push({
+          name: entry.name,
+          fullPath,
+          type: "folder",
+          children,
+        });
       }
-    } else if (entry.isFile() && /\.(yml|yaml)$/.test(entry.name)) {
-      nodes.push({ name: entry.name, fullPath, type: "file" });
+    } else if (
+      entry.isFile() &&
+      /\.(yml|yaml)$/.test(entry.name)
+    ) {
+      nodes.push({
+        name: entry.name,
+        fullPath,
+        type: "file",
+      });
     }
   }
 
@@ -135,25 +161,42 @@ async function buildTree(directory: string): Promise<FolderNode[]> {
 }
 
 function containsYaml(nodes: FolderNode[]): boolean {
-  return nodes.some(n =>
-    n.type === "file" || (n.children ? containsYaml(n.children) : false),
+  return nodes.some(
+    (n) =>
+      n.type === "file" ||
+      (n.children ? containsYaml(n.children) : false),
   );
 }
 
 function countFiles(nodes: FolderNode[]): number {
   return nodes.reduce(
-    (sum, n) => sum + (n.type === "file" ? 1 : countFiles(n.children ?? [])),
+    (sum, n) =>
+      sum +
+      (n.type === "file"
+        ? 1
+        : countFiles(n.children ?? [])),
     0,
   );
 }
 
 ipcMain.handle(
   "scan-source-folder",
-  async (_event, folderPath: string): Promise<ScanResult> => {
+  async (
+    _event,
+    folderPath: string,
+  ): Promise<ScanResult> => {
     const s = await stat(folderPath);
-    if (!s.isDirectory()) throw new Error(`Not a directory: ${folderPath}`);
+
+    if (!s.isDirectory()) {
+      throw new Error(`Not a directory: ${folderPath}`);
+    }
+
     const tree = await buildTree(folderPath);
-    return { totalFiles: countFiles(tree), tree };
+
+    return {
+      totalFiles: countFiles(tree),
+      tree,
+    };
   },
 );
 
@@ -166,19 +209,35 @@ export interface SitecoreAiConnectionStatus {
   error?: string;
 }
 
-ipcMain.handle("authenticate-sitecoreai", async (): Promise<SitecoreAiConnectionStatus> => {
-  try {
-    // Validate credentials by attempting a token request
-    const api = getAgentApi();
-    // Do a lightweight search to confirm the connection works
-    await api.searchByName("__never__");
-    return { connected: true };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("SitecoreAI connection failed:", message);
-    return { connected: false, error: message };
-  }
-});
+ipcMain.handle(
+  "authenticate-sitecoreai",
+  async (): Promise<SitecoreAiConnectionStatus> => {
+    try {
+      // Validate credentials by attempting a token request
+      const api = getAgentApi();
+
+      // Do a lightweight search to confirm the connection works
+      await api.searchByName("__never__");
+
+      return {
+        connected: true,
+      };
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : String(err);
+
+      console.error(
+        "SitecoreAI connection failed:",
+        message,
+      );
+
+      return {
+        connected: false,
+        error: message,
+      };
+    }
+  },
+);
 
 /* -------------------------------------------------------------------------- */
 /* Run analysis                                                                */
@@ -190,7 +249,10 @@ export interface RunAnalysisResult {
 
 ipcMain.handle(
   "run-analysis",
-  async (event, scopeFolder: string): Promise<RunAnalysisResult> => {
+  async (
+    event,
+    scopeFolder: string,
+  ): Promise<RunAnalysisResult> => {
     const sender = event.sender;
 
     const send = (progress: AnalysisProgress) => {
@@ -207,9 +269,16 @@ ipcMain.handle(
     });
 
     const api = getAgentApi();
-    const plan = await runRenderingMigration(scopeFolder, api, send);
 
-    return { plan };
+    const plan = await runMigrationAnalysis(
+      scopeFolder,
+      api,
+      send,
+    );
+
+    return {
+      plan,
+    };
   },
 );
 
@@ -229,7 +298,10 @@ ipcMain.handle(
 
     return applyMigrationPlan(
       plan,
-      { sourceRoot: sourceFolder, destinationRoot: destinationFolder },
+      {
+        sourceRoot: sourceFolder,
+        destinationRoot: destinationFolder,
+      },
       (message) => {
         if (!sender.isDestroyed()) {
           sender.send("apply-progress", message);
@@ -245,11 +317,18 @@ ipcMain.handle(
 
 app.whenReady().then(() => {
   createWindow();
+
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (
+      BrowserWindow.getAllWindows().length === 0
+    ) {
+      createWindow();
+    }
   });
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });

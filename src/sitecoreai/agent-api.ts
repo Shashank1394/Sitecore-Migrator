@@ -47,10 +47,10 @@ export class SitecoreAiAgentApi {
     }
 
     const body = new URLSearchParams({
-      grant_type:    "client_credentials",
-      client_id:     this.config.clientId,
+      grant_type: "client_credentials",
+      client_id: this.config.clientId,
       client_secret: this.config.clientSecret,
-      audience:      this.audience,
+      audience: this.audience,
     });
 
     const res = await fetch(this.authEndpoint, {
@@ -78,7 +78,7 @@ export class SitecoreAiAgentApi {
     const res = await fetch(this.graphqlEndpoint, {
       method: "POST",
       headers: {
-        "Content-Type":  "application/json",
+        "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify({ query, variables }),
@@ -148,26 +148,69 @@ export class SitecoreAiAgentApi {
 
   /**
    * Get an item directly by its GUID.
-   * Uses: item(where: { database: "master", itemId: "..." })
+   *
+   * SitecoreAI expects itemId in the where clause using
+   * Sitecore GUID format:
+   *
+   *   {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}
    */
-  async getItemById(itemId: string): Promise<SitecoreAiItem | null> {
-    // Normalise: strip braces and lowercase
-    const id = itemId.replace(/[{}]/g, "").toLowerCase();
+  async getItemById(
+    itemId: string,
+  ): Promise<SitecoreAiItem | null> {
+    const id = formatSitecoreId(itemId);
 
     const query = `
-      query GetItemById($itemId: String!) {
-        item(where: { database: "master", itemId: $itemId }) {
-          itemId
-          name
-          path
+    query GetItemById {
+      item(
+        where: {
+          database: "master"
+          itemId: "${id}"
         }
+      ) {
+        itemId
+        name
+        path
       }
-    `;
+    }
+  `;
 
-    type ItemData = { item: SitecoreAiItem | null };
-    const data = await this.gql<ItemData>(query, { itemId: `{${id.toUpperCase()}}` });
+    type ItemData = {
+      item: SitecoreAiItem | null;
+    };
+
+    const data =
+      await this.gql<ItemData>(query);
+
     return data.item;
   }
+}
+
+/**
+ * Converts a Sitecore item ID into standard GUID format.
+ *
+ * Accepts:
+ *   2a3e91a0798744b5ab3435c2d9de83b9
+ *   2a3e91a0-7987-44b5-ab34-35c2d9de83b9
+ *   {2A3E91A0-7987-44B5-AB34-35C2D9DE83B9}
+ *
+ * Returns:
+ *   {2A3E91A0-7987-44B5-AB34-35C2D9DE83B9}
+ */
+function formatSitecoreId(
+  value: string,
+): string {
+  const hex = value
+    .replace(/[{}-]/g, "")
+    .trim()
+    .toUpperCase();
+
+  if (!/^[0-9A-F]{32}$/.test(hex)) {
+    throw new Error(
+      `Invalid Sitecore item ID: ${value}`,
+    );
+  }
+
+  return `{${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}}`;
 }
 
 /**
@@ -179,12 +222,12 @@ export class SitecoreAiAgentApi {
  *   SITECORE_AI_CLIENT_SECRET  – OAuth client secret
  */
 export function createAgentApiFromEnv(): SitecoreAiAgentApi {
-  const cmHost       = process.env.SITECORE_AI_CM_HOST;
-  const clientId     = process.env.SITECORE_AI_CLIENT_ID;
+  const cmHost = process.env.SITECORE_AI_CM_HOST;
+  const clientId = process.env.SITECORE_AI_CLIENT_ID;
   const clientSecret = process.env.SITECORE_AI_CLIENT_SECRET;
 
-  if (!cmHost)       throw new Error("SITECORE_AI_CM_HOST is not set in .env");
-  if (!clientId)     throw new Error("SITECORE_AI_CLIENT_ID is not set in .env");
+  if (!cmHost) throw new Error("SITECORE_AI_CM_HOST is not set in .env");
+  if (!clientId) throw new Error("SITECORE_AI_CLIENT_ID is not set in .env");
   if (!clientSecret) throw new Error("SITECORE_AI_CLIENT_SECRET is not set in .env");
 
   return new SitecoreAiAgentApi({ cmHost, clientId, clientSecret });

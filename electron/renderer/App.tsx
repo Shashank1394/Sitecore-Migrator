@@ -397,12 +397,12 @@ function SitecoreAIAuthPage({
 
 function CaseStatusBadge({ status }: { status: CaseAnalysis["status"] }) {
   const map: Record<CaseAnalysis["status"], { label: string; cls: string }> = {
-    pending:       { label: "Pending",       cls: "badge--neutral" },
+    pending: { label: "Pending", cls: "badge--neutral" },
     investigating: { label: "Investigating", cls: "badge--active" },
-    planning:      { label: "Planning",      cls: "badge--active" },
-    complete:      { label: "Complete",      cls: "badge--success" },
-    failed:        { label: "Failed",        cls: "badge--error" },
-    skipped:       { label: "Skipped",       cls: "badge--neutral" },
+    planning: { label: "Planning", cls: "badge--active" },
+    complete: { label: "Complete", cls: "badge--success" },
+    failed: { label: "Failed", cls: "badge--error" },
+    skipped: { label: "Skipped", cls: "badge--neutral" },
   };
   const { label, cls } = map[status] ?? { label: status, cls: "badge--neutral" };
   return <span className={`badge ${cls}`}>{label}</span>;
@@ -421,7 +421,12 @@ function TemplateChip({ t }: { t: DiscoveredTemplate }) {
 }
 
 function AnalysisPage({
-  sourceFolder, progress, plan, analysisError, onBack, onContinue,
+  sourceFolder,
+  progress,
+  plan,
+  analysisError,
+  onBack,
+  onContinue,
 }: {
   sourceFolder: string;
   progress: AnalysisProgress | null;
@@ -430,91 +435,256 @@ function AnalysisPage({
   onBack: () => void;
   onContinue: () => void;
 }) {
-  const running = progress !== null && progress.status !== "complete" && progress.status !== "error";
-  const pct = progress && progress.totalCases > 0
-    ? Math.round((progress.completedCases / progress.totalCases) * 100)
-    : 0;
+  const running =
+    progress !== null &&
+    progress.status !== "complete" &&
+    progress.status !== "error";
+
+  const pct =
+    progress && progress.totalCases > 0
+      ? Math.round(
+          (progress.completedCases / progress.totalCases) * 100,
+        )
+      : 0;
+
+  const selectedFolderName =
+    sourceFolder.split(/[\\/]/).filter(Boolean).pop() ?? sourceFolder;
 
   return (
     <section className="content">
       <div className="card analysis-card">
+
+        {/* Header */}
         <div className="card-header">
           <span className="step">05</span>
+
           <div>
             <h2>AI-Powered Analysis</h2>
-            <p>Discovering templates and generating migration plan for <strong className="folder-pill">{sourceFolder}</strong></p>
+            <p>
+              Analyzing the selected migration folder using SitecoreAI Agent
+              API.
+            </p>
           </div>
+        </div>
+
+        {/* Selected folder */}
+        <div className="analysis-folder-info">
+          <div>
+            <span className="analysis-info-label">Selected folder</span>
+            <strong className="folder-pill">
+              {selectedFolderName}
+            </strong>
+          </div>
+
+          <div>
+            <span className="analysis-info-label">Path</span>
+            <span className="analysis-folder-path">
+              {sourceFolder}
+            </span>
+          </div>
+        </div>
+
+        {/* Migration type */}
+        <div className="analysis-migration-info">
+          <div>
+            <span className="analysis-info-label">
+              Migration
+            </span>
+
+            <strong className="analysis-migration-value">
+              Controller Rendering → Json Rendering
+            </strong>
+          </div>
+
+          {plan && (
+            <div>
+              <span className="analysis-info-label">
+                Files to update
+              </span>
+
+              <strong className="analysis-files-count">
+                {plan.totalFilesAffected}
+              </strong>
+            </div>
+          )}
         </div>
 
         {/* Live progress */}
         {progress && (
           <div className="inv-progress-block">
             <div className="inv-progress-header">
-              <span className="inv-progress-label">{progress.message}</span>
+              <span className="inv-progress-label">
+                {progress.message}
+              </span>
+
               {progress.totalCases > 0 && (
-                <span className="inv-progress-count">{progress.completedCases} / {progress.totalCases} cases</span>
+                <span className="inv-progress-count">
+                  {progress.completedCases} / {progress.totalCases} cases
+                </span>
               )}
             </div>
+
             <div className="inv-progress-bar-track">
-              <div className={`inv-progress-bar-fill ${running ? "inv-progress-bar-fill--animated" : ""}`}
-                style={{ width: `${running && progress.totalCases === 0 ? 5 : pct}%` }} />
+              <div
+                className={`inv-progress-bar-fill ${
+                  running
+                    ? "inv-progress-bar-fill--animated"
+                    : ""
+                }`}
+                style={{
+                  width: `${
+                    running && progress.totalCases === 0
+                      ? 5
+                      : pct
+                  }%`,
+                }}
+              />
             </div>
+
             {progress.currentCase && running && (
-              <p className="inv-current-file">Current case: {progress.currentCase}</p>
+              <p className="inv-current-file">
+                Current case: {progress.currentCase}
+              </p>
             )}
+
             {progress.investigationStep && running && (
-              <p className="inv-current-file analysis-step">{progress.investigationStep}</p>
+              <p className="inv-current-file analysis-step">
+                {progress.investigationStep}
+              </p>
             )}
           </div>
         )}
 
-        {analysisError && <p className="error-message">{analysisError}</p>}
+        {/* Error */}
+        {analysisError && (
+          <p className="error-message">
+            {analysisError}
+          </p>
+        )}
 
         {/* Case cards */}
         {plan && (
           <>
             <div className="analysis-summary-row">
-              <StatCard label="Cases analysed" value={plan.cases.length} />
-              <StatCard label="Files affected" value={plan.totalFilesAffected} accent />
-              <StatCard label="Exceptions" value={plan.totalExceptions} warn={plan.totalExceptions > 0} />
+              <StatCard
+                label="Files scanned"
+                value={plan.cases.reduce(
+                  (total, c) => total + c.filesDiscovered,
+                  0,
+                )}
+              />
+
+              <StatCard
+                label="Files affected"
+                value={plan.totalFilesAffected}
+                accent
+              />
+
+              <StatCard
+                label="Exceptions"
+                value={plan.totalExceptions}
+                warn={plan.totalExceptions > 0}
+              />
             </div>
 
             <div className="case-list">
               {plan.cases.map((c) => (
-                <div key={c.caseId} className={`case-card ${c.status === "failed" ? "case-card--failed" : ""}`}>
+                <div
+                  key={c.caseId}
+                  className={`case-card ${
+                    c.status === "failed"
+                      ? "case-card--failed"
+                      : ""
+                  }`}
+                >
                   <div className="case-card-header">
-                    <span className="case-name">{c.caseName}</span>
+                    <span className="case-name">
+                      {c.caseName}
+                    </span>
+
                     <CaseStatusBadge status={c.status} />
                   </div>
 
-                  {c.patternDescription && c.status !== "failed" && (
-                    <p className="case-pattern">Pattern: <strong>{c.patternDescription}</strong></p>
-                  )}
+                  {c.patternDescription &&
+                    c.status !== "failed" && (
+                      <p className="case-pattern">
+                        Pattern:{" "}
+                        <strong>
+                          {c.patternDescription}
+                        </strong>
+                      </p>
+                    )}
 
                   <div className="case-stats">
-                    <span>Files discovered: <strong>{c.filesDiscovered}</strong></span>
-                    <span>Files affected: <strong>{c.filesAffected.length}</strong></span>
-                    <span>Exceptions: <strong>{c.exceptions.length}</strong></span>
+                    <span>
+                      Files discovered:{" "}
+                      <strong>
+                        {c.filesDiscovered}
+                      </strong>
+                    </span>
+
+                    <span>
+                      Files affected:{" "}
+                      <strong>
+                        {c.filesAffected.length}
+                      </strong>
+                    </span>
+
+                    <span>
+                      Exceptions:{" "}
+                      <strong>
+                        {c.exceptions.length}
+                      </strong>
+                    </span>
                   </div>
 
                   {c.discoveredTemplates.length > 0 && (
                     <div className="template-chips">
-                      {c.discoveredTemplates.map((t) => <TemplateChip key={`${t.environment}-${t.id}`} t={t} />)}
+                      {c.discoveredTemplates.map((t) => (
+                        <TemplateChip
+                          key={`${t.environment}-${t.id}`}
+                          t={t}
+                        />
+                      ))}
                     </div>
                   )}
 
                   {c.exceptions.length > 0 && (
                     <details className="inv-errors">
                       <summary className="inv-errors-summary">
-                        {c.exceptions.length} exception{c.exceptions.length !== 1 ? "s" : ""}
+                        {c.exceptions.length} exception
+                        {c.exceptions.length !== 1
+                          ? "s"
+                          : ""}
                       </summary>
+
                       <div className="inv-error-list">
                         {c.exceptions.map((ex, i) => (
-                          <div key={i} className="inv-error-row">
-                            <span className={`inv-error-path ${ex.severity === "error" ? "sev-error" : "sev-warn"}`}>
-                              {ex.severity === "error" ? "✕" : "⚠"} {ex.filePath ? shortPath(ex.filePath, sourceFolder) : "—"}
+                          <div
+                            key={i}
+                            className="inv-error-row"
+                          >
+                            <span
+                              className={`inv-error-path ${
+                                ex.severity === "error"
+                                  ? "sev-error"
+                                  : "sev-warn"
+                              }`}
+                            >
+                              {ex.severity === "error"
+                                ? "✕"
+                                : "⚠"}{" "}
+                              {ex.filePath
+                                ? shortPath(
+                                    ex.filePath,
+                                    sourceFolder,
+                                  )
+                                : "—"}
                             </span>
-                            <span className="inv-error-msg">{ex.message}</span>
+
+                            <span className="inv-error-msg">
+                              {ex.message}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -526,13 +696,27 @@ function AnalysisPage({
           </>
         )}
 
+        {/* Actions */}
         <div className="actions actions-spaced">
-          <button type="button" className="secondary-button" onClick={onBack}>← Back</button>
-          {plan && plan.totalFilesAffected > 0 && (
-            <button type="button" className="primary-button" onClick={onContinue}>
-              Continue to Review Plan <span>→</span>
-            </button>
-          )}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onBack}
+          >
+            ← Back
+          </button>
+
+          {plan &&
+            plan.totalFilesAffected > 0 && (
+              <button
+                type="button"
+                className="primary-button"
+                onClick={onContinue}
+              >
+                Continue to Review Plan{" "}
+                <span>→</span>
+              </button>
+            )}
         </div>
       </div>
     </section>
@@ -567,7 +751,10 @@ function AffectedFileRow({ file, base }: { file: AffectedFile; base: string }) {
 }
 
 function ReviewPage({
-  sourceFolder, plan, onBack, onApprove,
+  sourceFolder,
+  plan,
+  onBack,
+  onApprove,
 }: {
   sourceFolder: string;
   plan: MigrationPlan;
@@ -576,40 +763,154 @@ function ReviewPage({
 }) {
   const [confirmed, setConfirmed] = useState(false);
 
+  const selectedFolderName =
+    sourceFolder.split(/[\\/]/).filter(Boolean).pop() ?? sourceFolder;
+
+  const filesScanned = plan.cases.reduce(
+    (total, c) => total + c.filesDiscovered,
+    0,
+  );
+
   return (
     <section className="content">
       <div className="card review-card">
+        {/* Header */}
         <div className="card-header">
           <span className="step">06</span>
+
           <div>
             <h2>Review & Approve</h2>
-            <p>Inspect every planned change before migration executes.</p>
+            <p>
+              Review the changes that will be applied to the selected
+              migration folder before anything is modified.
+            </p>
           </div>
         </div>
 
-        <div className="review-meta">
-          <span>Plan generated: <strong>{new Date(plan.generatedAt).toLocaleString()}</strong></span>
-          <span>Instructions version: <strong>{plan.instructionsVersion}</strong></span>
-          <span>Total files affected: <strong>{plan.totalFilesAffected}</strong></span>
+        {/* Selected folder */}
+        <div className="review-folder-info">
+          <div>
+            <span className="review-info-label">
+              Selected folder
+            </span>
+
+            <strong className="folder-pill">
+              {selectedFolderName}
+            </strong>
+          </div>
+
+          <div>
+            <span className="review-info-label">
+              Source path
+            </span>
+
+            <span className="review-folder-path">
+              {sourceFolder}
+            </span>
+          </div>
         </div>
 
+        {/* Migration summary */}
+        <div className="review-migration-summary">
+          <div className="review-summary-item">
+            <span className="review-info-label">
+              Migration
+            </span>
+
+            <strong>
+              Controller Rendering → Json Rendering
+            </strong>
+          </div>
+
+          <div className="review-summary-item">
+            <span className="review-info-label">
+              Files scanned
+            </span>
+
+            <strong>{filesScanned}</strong>
+          </div>
+
+          <div className="review-summary-item">
+            <span className="review-info-label">
+              Files to update
+            </span>
+
+            <strong>{plan.totalFilesAffected}</strong>
+          </div>
+
+          <div className="review-summary-item">
+            <span className="review-info-label">
+              Exceptions
+            </span>
+
+            <strong
+              className={
+                plan.totalExceptions > 0
+                  ? "review-exception-count"
+                  : ""
+              }
+            >
+              {plan.totalExceptions}
+            </strong>
+          </div>
+        </div>
+
+        {/* Plan metadata */}
+        <div className="review-meta">
+          <span>
+            Plan generated:{" "}
+            <strong>
+              {new Date(
+                plan.generatedAt,
+              ).toLocaleString()}
+            </strong>
+          </span>
+
+          <span>
+            Instructions version:{" "}
+            <strong>
+              {plan.instructionsVersion}
+            </strong>
+          </span>
+        </div>
+
+        {/* Cases */}
         {plan.cases.map((c) => (
-          <div key={c.caseId} className="review-case">
+          <div
+            key={c.caseId}
+            className="review-case"
+          >
             <div className="review-case-header">
-              <span className="case-name">{c.caseName}</span>
-              <CaseStatusBadge status={c.status} />
+              <span className="case-name">
+                {c.caseName}
+              </span>
+
+              <CaseStatusBadge
+                status={c.status}
+              />
             </div>
 
             {c.patternDescription && (
-              <p className="case-pattern">Pattern: <strong>{c.patternDescription}</strong></p>
+              <p className="case-pattern">
+                Pattern:{" "}
+                <strong>
+                  {c.patternDescription}
+                </strong>
+              </p>
             )}
 
             {/* Template mappings */}
             {c.discoveredTemplates.length > 0 && (
               <div className="review-templates">
                 <h4>Discovered templates</h4>
+
                 <div className="template-chips">
-                  {c.discoveredTemplates.map((t) => <TemplateChip key={`${t.environment}-${t.id}`} t={t} />)}
+                  {c.discoveredTemplates.map((t) => (
+                    <TemplateChip
+                      key={`${t.environment}-${t.id}`}
+                      t={t}
+                    />
+                  ))}
                 </div>
               </div>
             )}
@@ -617,10 +918,20 @@ function ReviewPage({
             {/* Affected files */}
             {c.filesAffected.length > 0 && (
               <div className="review-files">
-                <h4>{c.filesAffected.length} affected file{c.filesAffected.length !== 1 ? "s" : ""}</h4>
+                <h4>
+                  {c.filesAffected.length} affected file
+                  {c.filesAffected.length !== 1
+                    ? "s"
+                    : ""}
+                </h4>
+
                 <div className="af-list">
                   {c.filesAffected.map((f) => (
-                    <AffectedFileRow key={f.filePath} file={f} base={sourceFolder} />
+                    <AffectedFileRow
+                      key={f.filePath}
+                      file={f}
+                      base={sourceFolder}
+                    />
                   ))}
                 </div>
               </div>
@@ -630,15 +941,39 @@ function ReviewPage({
             {c.exceptions.length > 0 && (
               <details className="inv-errors">
                 <summary className="inv-errors-summary">
-                  {c.exceptions.length} exception{c.exceptions.length !== 1 ? "s" : ""}
+                  {c.exceptions.length} exception
+                  {c.exceptions.length !== 1
+                    ? "s"
+                    : ""}
                 </summary>
+
                 <div className="inv-error-list">
                   {c.exceptions.map((ex, i) => (
-                    <div key={i} className="inv-error-row">
-                      <span className={`inv-error-path ${ex.severity === "error" ? "sev-error" : "sev-warn"}`}>
-                        {ex.severity === "error" ? "✕" : "⚠"} {ex.filePath ? shortPath(ex.filePath, sourceFolder) : "—"}
+                    <div
+                      key={i}
+                      className="inv-error-row"
+                    >
+                      <span
+                        className={`inv-error-path ${
+                          ex.severity === "error"
+                            ? "sev-error"
+                            : "sev-warn"
+                        }`}
+                      >
+                        {ex.severity === "error"
+                          ? "✕"
+                          : "⚠"}{" "}
+                        {ex.filePath
+                          ? shortPath(
+                              ex.filePath,
+                              sourceFolder,
+                            )
+                          : "—"}
                       </span>
-                      <span className="inv-error-msg">{ex.message}</span>
+
+                      <span className="inv-error-msg">
+                        {ex.message}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -647,21 +982,62 @@ function ReviewPage({
           </div>
         ))}
 
+        {/* What will happen */}
+        <div className="review-action-summary">
+          <h4>What will happen when you approve</h4>
+
+          <p>
+            The selected{" "}
+            <strong>{selectedFolderName}</strong>{" "}
+            folder will be copied to the output directory.
+            Only the YAML files listed above will have their{" "}
+            <strong>Template</strong> changed from{" "}
+            <strong>Controller Rendering</strong> to{" "}
+            <strong>Json Rendering</strong>.
+          </p>
+
+          <p>
+            The original source files will not be modified.
+          </p>
+        </div>
+
         {/* Approval gate */}
         <div className="approval-gate">
           <label className="approval-check">
-            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-            I have reviewed the migration plan and confirm that the changes above are correct.
-            No YAML files will be modified until I click <strong>Approve & Migrate</strong>.
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) =>
+                setConfirmed(e.target.checked)
+              }
+            />
+
+            <span>
+              I have reviewed the migration plan and confirm
+              that the changes above are correct. No YAML files
+              will be modified until I click{" "}
+              <strong>Approve & Migrate</strong>.
+            </span>
           </label>
         </div>
 
+        {/* Actions */}
         <div className="actions actions-spaced">
-          <button type="button" className="secondary-button" onClick={onBack}>← Back</button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onBack}
+          >
+            ← Back
+          </button>
+
           <button
             type="button"
             className="primary-button approve-button"
-            disabled={!confirmed || plan.totalFilesAffected === 0}
+            disabled={
+              !confirmed ||
+              plan.totalFilesAffected === 0
+            }
             onClick={onApprove}
           >
             Approve & Migrate <span>→</span>
@@ -677,12 +1053,12 @@ function ReviewPage({
 type Page = "folders" | "scan" | "scope-select" | "sitecoreai-auth" | "analysis" | "review";
 
 const STEPS: { key: Page; label: string }[] = [
-  { key: "folders",       label: "01 Folders" },
-  { key: "scan",          label: "02 Source Files" },
-  { key: "scope-select",  label: "03 Migration Scope" },
+  { key: "folders", label: "01 Folders" },
+  { key: "scan", label: "02 Source Files" },
+  { key: "scope-select", label: "03 Migration Scope" },
   { key: "sitecoreai-auth", label: "04 SitecoreAI Auth" },
-  { key: "analysis",      label: "05 Analyze & Plan" },
-  { key: "review",        label: "06 Review & Approve" },
+  { key: "analysis", label: "05 Analyze & Plan" },
+  { key: "review", label: "06 Review & Approve" },
 ];
 
 export default function App() {
@@ -787,32 +1163,70 @@ export default function App() {
   }
 
   async function handleAuthContinue() {
-    setAnalysisProgress(null); setMigrationPlan(null); setAnalysisError("");
+    if (!selectedScope) {
+      setAnalysisError("Please select a migration folder before continuing.");
+      return;
+    }
+
+    setAnalysisProgress(null);
+    setMigrationPlan(null);
+    setAnalysisError("");
+
     anlUnsubRef.current?.();
-    const unsub = window.electronAPI.onAnalysisProgress(setAnalysisProgress);
+
+    const unsub = window.electronAPI.onAnalysisProgress(
+      setAnalysisProgress,
+    );
+
     anlUnsubRef.current = unsub;
     setPage("analysis");
+
     try {
-      const scopeToAnalyze = selectedScope || sourceFolder;
-      const { plan } = await window.electronAPI.runAnalysis(scopeToAnalyze);
+      // IMPORTANT:
+      // Analysis is restricted to the folder explicitly selected
+      // by the user. Do not fall back to the parent source folder.
+      const { plan } = await window.electronAPI.runAnalysis(
+        selectedScope,
+      );
+
       setMigrationPlan(plan);
     } catch (err) {
-      setAnalysisError(err instanceof Error ? err.message : "Analysis failed.");
+      setAnalysisError(
+        err instanceof Error ? err.message : "Analysis failed.",
+      );
     } finally {
-      unsub(); anlUnsubRef.current = null;
+      unsub();
+      anlUnsubRef.current = null;
     }
   }
 
   function handleAnalysisContinue() { setPage("review"); }
 
   function handleApprove() {
-    if (!migrationPlan) return;
+    if (!migrationPlan || !selectedScope) return;
+
     void (async () => {
       try {
-        const { applied, errors } = await window.electronAPI.applyMigration(migrationPlan, sourceFolder, destinationFolder);
-        alert(`Migration complete!\n\n✓ ${applied} file(s) updated in destination folder: ${destinationFolder}.${errors.length > 0 ? `\n\n⚠ ${errors.length} error(s):\n${errors.join("\n")}` : ""}`);
+        const { applied, errors } =
+          await window.electronAPI.applyMigration(
+            migrationPlan,
+            selectedScope,
+            destinationFolder,
+          );
+
+        alert(
+          `Migration complete!\n\n` +
+          `✓ ${applied} file(s) updated.\n\n` +
+          `Output folder: ${destinationFolder}` +
+          (errors.length > 0
+            ? `\n\n⚠ ${errors.length} error(s):\n${errors.join("\n")}`
+            : ""),
+        );
       } catch (err) {
-        alert(`Migration failed: ${err instanceof Error ? err.message : String(err)}`);
+        alert(
+          `Migration failed: ${err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
     })();
   }
@@ -840,12 +1254,28 @@ export default function App() {
         </nav>
       </header>
 
-      {page === "folders"           && <FolderPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} pickerError={pickerError} onSelectSource={() => selectFolder(setSourceFolder)} onSelectDestination={() => selectFolder(setDestinationFolder)} onContinue={handleFoldersContinue} />}
-      {page === "scan"              && <ScanPage sourceFolder={sourceFolder} scanning={scanning} scanResult={scanResult} scanError={scanError} onBack={() => setPage("folders")} onContinue={handleScanContinue} />}
-      {page === "scope-select"      && scanResult && <ScopeSelectPage scanResult={scanResult} onBack={() => setPage("scan")} onContinue={handleScopeContinue} />}
-      {page === "sitecoreai-auth"   && <SitecoreAIAuthPage authState={sitecoreAIAuth} onAuthenticate={handleAuthenticateSitecoreAI} onBack={() => setPage("scope-select")} onContinue={handleAuthContinue} />}
-      {page === "analysis"          && <AnalysisPage sourceFolder={sourceFolder} progress={analysisProgress} plan={migrationPlan} analysisError={analysisError} onBack={() => setPage("sitecoreai-auth")} onContinue={handleAnalysisContinue} />}
-      {page === "review"            && migrationPlan && <ReviewPage sourceFolder={sourceFolder} plan={migrationPlan} onBack={() => setPage("analysis")} onApprove={handleApprove} />}
+      {page === "folders" && <FolderPage sourceFolder={sourceFolder} destinationFolder={destinationFolder} pickerError={pickerError} onSelectSource={() => selectFolder(setSourceFolder)} onSelectDestination={() => selectFolder(setDestinationFolder)} onContinue={handleFoldersContinue} />}
+      {page === "scan" && <ScanPage sourceFolder={sourceFolder} scanning={scanning} scanResult={scanResult} scanError={scanError} onBack={() => setPage("folders")} onContinue={handleScanContinue} />}
+      {page === "scope-select" && scanResult && <ScopeSelectPage scanResult={scanResult} onBack={() => setPage("scan")} onContinue={handleScopeContinue} />}
+      {page === "sitecoreai-auth" && <SitecoreAIAuthPage authState={sitecoreAIAuth} onAuthenticate={handleAuthenticateSitecoreAI} onBack={() => setPage("scope-select")} onContinue={handleAuthContinue} />}
+      {page === "analysis" && selectedScope && (
+        <AnalysisPage
+          sourceFolder={selectedScope}
+          progress={analysisProgress}
+          plan={migrationPlan}
+          analysisError={analysisError}
+          onBack={() => setPage("sitecoreai-auth")}
+          onContinue={handleAnalysisContinue}
+        />
+      )}
+      {page === "review" && migrationPlan && selectedScope && (
+        <ReviewPage
+          sourceFolder={selectedScope}
+          plan={migrationPlan}
+          onBack={() => setPage("analysis")}
+          onApprove={handleApprove}
+        />
+      )}
     </main>
   );
 }
